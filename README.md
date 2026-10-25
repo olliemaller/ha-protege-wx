@@ -269,13 +269,9 @@ Tests run against `tests/fake_controller.py`. It speaks both protocols with the 
 
 ## Built by Arcnode IT
 
-<a href="https://arcnode.com.au"><img src="https://raw.githubusercontent.com/olliemaller/olliemaller/main/assets/avatar.png" width="64" align="left" alt="Oliver Maller" style="margin-right:16px"></a>
+<a href="https://arcnode.com.au"><img src="images/built-by-arcnode.png" width="100%" alt="Built and maintained by Oliver Maller at Arcnode IT in Melbourne. Arcnode IT designs, installs and supports UniFi networks, Apple HomeKit and alarm systems across Melbourne and Victoria."></a>
 
-This integration is built and maintained by **Oliver Maller** at **[Arcnode IT](https://arcnode.com.au)**, a Melbourne company that designs, installs and supports UniFi networks, Apple HomeKit and alarm systems.
-
-Bugs and feature requests go in [issues](https://github.com/olliemaller/ha-protege-wx/issues). If you'd like a UniFi network, HomeKit setup or alarm system installed professionally in Melbourne or Victoria, [get in touch with Arcnode](https://arcnode.com.au).
-
-<br clear="left">
+Found a bug or want a feature? [Open an issue](https://github.com/olliemaller/ha-protege-wx/issues). Want a UniFi network, HomeKit setup or alarm system installed professionally? [Get in touch with Arcnode](https://arcnode.com.au).
 
 ## Credits
 

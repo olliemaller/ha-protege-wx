@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white" alt="HACS Custom"></a>
-  <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=1E88E5" alt="Release"></a>
-  <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks" alt="Checks"></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-18BCF2?style=for-the-badge&logo=homeassistant&logoColor=white" alt="Home Assistant 2025.1+">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=0D3B66" alt="Licence"></a>
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-185FA5?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white&labelColor=042C53" alt="HACS Custom"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Release"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=042C53" alt="Checks"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2026.2%2B-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=042C53" alt="Home Assistant 2026.2+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Licence"></a>
 </p>
 
 <p align="center">
@@ -42,14 +42,14 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 
 | Feature | What it does |
 |---|---|
-| 🛡️ **Alarm panel** | Arm Away, Home (stay) and Night (instant), and disarm. Correct modes in Apple Home, even during the exit delay. |
-| ⚡ **Fast** | Updates about every second, driven by the controller's event log. |
-| 🙋 **Who did it** | Shows which keypad user, card, PIN or Home Assistant user armed, disarmed or opened a door. |
-| 🚪 **Doors** | Timed unlock, hold open, and access granted or denied events. |
-| ❗ **Won't arm? Know why** | A failed arm names the zones that stopped it, and can send you a notification. |
-| 🔢 **PINs** | Named users with their own PINs and arm/disarm permissions, for wall tablets and keypad cards. |
-| 🩺 **Health** | Trouble inputs, a single "Alarm fault" sensor, supply voltage and the last event. |
-| 🏠 **Local** | Talks only to your controller over your own network. No cloud, and no extra Python packages. |
+| **Alarm panel** | Arm Away, Home (stay) and Night (instant), and disarm. Correct modes in Apple Home, even during the exit delay. |
+| **Fast** | Updates about every second, driven by the controller's event log. |
+| **Who did it** | Shows which keypad user, card, PIN or Home Assistant user armed, disarmed or opened a door. |
+| **Doors** | Timed unlock, hold open, and access granted or denied events. |
+| **Won't arm? Know why** | A failed arm names the zones that stopped it, and can send you a notification. |
+| **PINs** | Named users with their own PINs and arm/disarm permissions, for wall tablets and keypad cards. |
+| **Health** | Trouble inputs, a single "Alarm fault" sensor, supply voltage and the last event. |
+| **Local** | Talks only to your controller over your own network. No cloud, and no extra Python packages. |
 
 ## Features
 
@@ -93,15 +93,15 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 ## Requirements
 
 - An ICT Protege WX with its **web interface** turned on. Port 7377 is the usual default.
-- Home Assistant **2025.1** or newer. The integration's own icons need **2026.3** or newer.
+- Home Assistant **2026.2** or newer. The integration's own icon shows from **2026.3**.
 - A controller **operator** for Home Assistant (see [Setting up the controller](#1-set-up-the-controller)).
 
 Both web protocol versions are supported and **detected automatically**:
 
 | Web interface | Protocol | Status |
 |---|---|---|
-| **2.3.x** (e.g. 2.3.628, WX firmware 4.00) | HTTP POST, controller-issued session cookie | ✅ Tested |
-| Older | HTTP GET, client session, as in [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) | ✅ Supported |
+| **2.3.x** (e.g. 2.3.628, WX firmware 4.00) | HTTP POST, controller-issued session cookie | Tested |
+| Older | HTTP GET, client session, as in [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) | Supported |
 
 Tested on one controller so far. Please [open an issue](https://github.com/olliemaller/ha-protege-wx/issues) with your web interface version and whether it worked.
 
@@ -169,7 +169,7 @@ Add these to your HomeKit Bridge and they appear in the Home app:
 Diagnostic and configuration entities, including *Hold open*, are left out of the bridge by default. "Turn on all switches" can't hold every door open.
 
 > [!TIP]
-> If you set up PINs, give the bridge a PIN in the alarm panel's entity configuration (`code:`) so Apple Home can arm and disarm.
+> If you set up PINs, Apple Home needs one too. Add it to the HomeKit Bridge's YAML `entity_config` for the alarm panel (`code: "1234"`); the bridge's UI options don't have this setting.
 
 ## Wall tablets, keypads and Alarmo
 
@@ -210,8 +210,12 @@ The area, door and controller **event entities** carry the same information for 
 triggers:
   - trigger: state
     entity_id: event.front_door_events
+    not_from: [unavailable, unknown]
+conditions:
+  - condition: state
+    entity_id: event.front_door_events
     attribute: event_type
-    to: access_granted
+    state: access_granted
 actions:
   - action: notify.mobile_app_phone
     data:

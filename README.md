@@ -1,146 +1,277 @@
-# ICT Protege WX for Home Assistant
+<p align="center">
+  <img src="images/banner.png" alt="Protege WX for Home Assistant" width="100%">
+</p>
 
-Control and monitor an **ICT Protege WX** alarm and access-control controller from Home Assistant, and through the HomeKit Bridge, from Apple Home.
+<p align="center">
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white" alt="HACS Custom"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=1E88E5" alt="Release"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks" alt="Checks"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-18BCF2?style=for-the-badge&logo=homeassistant&logoColor=white" alt="Home Assistant 2025.1+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=0D3B66" alt="Licence"></a>
+</p>
 
-It talks to the controller through **its built-in web interface**, the same encrypted protocol the WX web pages use. You **don't need the Automation & Integration licence** or the Automation service on port 21000. If you do have that licence, [caboose014/ICT-Protege-Home-Assistant](https://github.com/caboose014/ICT-Protege-Home-Assistant) uses it instead.
+<p align="center">
+  <b>Arm, disarm, unlock and watch your ICT Protege WX from Home Assistant and Apple Home.</b><br>
+  Through the controller's own web interface, so <b>no Automation &amp; Integration licence is needed.</b>
+</p>
 
-> **Unofficial.** This project isn't affiliated with or endorsed by Integrated Control Technology. "Protege" is a trademark of its owner and is used only to describe compatibility.
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=olliemaller&repository=ha-protege-wx&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
+  &nbsp;
+  <a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=protege_wx"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Add integration"></a>
+</p>
+
+---
+
+<p align="center">
+  <img src="images/dashboard.png" alt="Alarm, doors, zones and controller status on a Home Assistant dashboard" width="88%">
+</p>
+
+## Why this exists
+
+ICT's official way to talk to other systems is the **Automation & Integration** service on port 21000. It needs a paid licence, and many WX controllers don't have one. Without it, existing integrations can't connect.
+
+Every WX does have a **web interface**. This integration speaks the same encrypted protocol as those web pages, so if you can log in to your controller in a browser, Home Assistant can control it.
+
+> [!IMPORTANT]
+> **Unofficial.** Not affiliated with or endorsed by Integrated Control Technology. "ICT" and "Protege" are trademarks of their owner, used here only to describe compatibility.
 >
 > **It controls a live security system.** Use a dedicated operator with only the permissions Home Assistant needs, and test arming, disarming and door control while you're on site.
 
+## Highlights
+
+| | |
+|---|---|
+| 🛡️ **Alarm panel** | Arm Away, Home (stay) and Night (instant), and disarm. Correct modes in Apple Home, even during the exit delay. |
+| ⚡ **Fast** | Updates about every second, driven by the controller's event log. |
+| 🙋 **Who did it** | Shows which keypad user, card, PIN or Home Assistant user armed, disarmed or opened a door. |
+| 🚪 **Doors** | Timed unlock, hold open, and access granted or denied events. |
+| ❗ **Won't arm? Know why** | A failed arm names the zones that stopped it, and can send you a notification. |
+| 🔢 **PINs** | Named users with their own PINs and arm/disarm permissions, for wall tablets and keypad cards. |
+| 🩺 **Health** | Trouble inputs, a single "Alarm fault" sensor, supply voltage and the last event. |
+| 🏠 **Local** | Talks only to your controller over your own network. No cloud, and no extra Python packages. |
+
 ## Features
 
+<img src="images/mobile.png" alt="Mobile dashboard" width="260" align="right">
+
 ### Areas
-- **Alarm control panel** for arming and disarming:
-  - Away, Home (stay) and Night (instant), with disarm.
-  - During the exit delay it shows the mode being armed, so Apple Home displays it correctly. An option switches this to "Arming".
-  - Pending during the entry delay; Triggered only while an alarm or siren is actually active, not just held in alarm memory.
-- **Who changed it** (`changed_by`): the keypad user, card or Home Assistant user, read from the controller's event log.
-- **Arm-failure feedback.** When the controller refuses to arm, Home Assistant:
-  - shows an error naming the open zones;
-  - fires a `protege_wx_failed_to_arm` event;
-  - optionally shows a notification.
-  This works whether the arm came from Home Assistant or a keypad.
-- **Ready to arm** sensors, one for away and one for stay. Stay-type zones are ignored for stay.
-- **Buttons:** force arm away, force arm night, and silence siren. Force arming bypasses open zones until disarmed.
-- **Events entity** for automations: armed, arming started or cancelled, failed to arm, disarmed and alarm, each with who did it.
+- **Alarm control panel** with Away, Home (stay), Night (instant) and Disarm.
+  - During the exit delay it shows the mode being armed, so Apple Home shows Home and Away correctly. An option switches this to "Arming".
+  - *Pending* during the entry delay. *Triggered* only while an alarm or siren is actually active, not just held in alarm memory.
+- **`changed_by`**: the keypad user, card or Home Assistant user, read from the controller's event log.
+- **Arm-failure feedback.** When the controller refuses to arm, from Home Assistant or a keypad, you get:
+  - an error naming the open zones;
+  - a `protege_wx_failed_to_arm` event;
+  - optionally, a notification.
+- **Ready to arm** sensors for away and for stay. Stay-type zones are ignored for stay. The open zones are listed as an attribute.
+- **Buttons:** Force arm away, Force arm night and Silence siren.
+- **Events entity:** armed, arming started or cancelled, failed to arm, disarmed and alarm, each with who did it.
 
 ### Doors
 - **Lock.** Unlocking releases the door for its programmed time.
-- **Hold open switch** that latches the door unlocked until switched off.
+- **Hold open** switch, which latches the door unlocked until switched off.
 - **Events entity:** access granted or denied (with the user and whether a card or PIN was used), unlocked, locked, opened, closed, forced open and left open.
-- **Door open/closed sensor** if the door has a door-position input programmed.
+- **Door open/closed sensor**, when the door has a door-position input.
 
 ### Inputs (zones)
-- **Motion, door, window, smoke and other sensor types,** chosen per input. A tamper or short reads as "on", so a damaged sensor never looks quiet.
-- **Tamper sensor** (diagnostic).
-- **Bypass selector** (config): not bypassed, until disarmed, or permanent.
+- **Motion, door, window, smoke, moisture** and other types, chosen per input. A tamper or short reads as *on*, so a damaged sensor never looks quiet.
+- **Tamper** sensor (diagnostic).
+- **Bypass** selector: not bypassed, until disarmed, or permanent.
 
 ### Controller
-- **Trouble sensors** such as mains failure, low battery and siren tamper.
-- **Alarm fault:** one sensor that turns on if anything needs attention.
-- **Supply voltage** and memory use.
-- **Last event:** the most recent event-log line.
+- **Trouble inputs** such as mains failure, low battery, siren tamper and module offline.
+- **Alarm fault**: one sensor that turns on if anything needs attention.
+- **Supply voltage**, **Last event** and memory use.
 - **Controller events** entity.
 
-### Users and PINs
-- Add named users with a PIN, and choose whether each can arm and disarm. This lets keypad cards and wall tablets work properly, and records who armed or disarmed.
-- Only a salted hash of each PIN is stored. These users are separate from the controller's own keypad users.
+### Outputs
+- Choose any outputs (PGMs) to add as switches, and pulse them for a set time with an action.
 
-### Actions
-| Action | What it does |
+<br clear="right">
+
+## Requirements
+
+- An ICT Protege WX with its **web interface** turned on. Port 7377 is the usual default.
+- Home Assistant **2025.1** or newer. The integration's own icons need **2026.3** or newer.
+- A controller **operator** for Home Assistant (see [Setting up the controller](#1-set-up-the-controller)).
+
+Both web protocol versions are supported and **detected automatically**:
+
+| Web interface | Protocol | Status |
+|---|---|---|
+| **2.3.x** (e.g. 2.3.628, WX firmware 4.00) | HTTP POST, controller-issued session cookie | ✅ Tested |
+| Older | HTTP GET, client session, as in [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) | ✅ Supported |
+
+Tested on one controller so far. Please [open an issue](https://github.com/olliemaller/ha-protege-wx/issues) with your web interface version and whether it worked.
+
+## Installation
+
+### HACS (recommended)
+
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=olliemaller&repository=ha-protege-wx&category=integration)
+
+1. Click the button above, or in **HACS** open the ⋮ menu → **Custom repositories**, add `https://github.com/olliemaller/ha-protege-wx` and choose type **Integration**.
+2. Download **ICT Protege WX**.
+3. Restart Home Assistant.
+
+### Manual
+
+1. Download the [latest release](https://github.com/olliemaller/ha-protege-wx/releases/latest).
+2. Copy `custom_components/protege_wx` into your `config/custom_components/` folder.
+3. Restart Home Assistant.
+
+## Setup
+
+### 1. Set up the controller
+
+In the Protege web interface, create an **operator** for Home Assistant, for example `homeassistant`.
+
+| Setting | Recommendation |
 |---|---|
-| `protege_wx.arm` | Arm in `away`, `stay` or `instant` mode, optionally with `force` |
-| `protege_wx.unlock_door` | Timed unlock, or `hold_open` |
-| `protege_wx.bypass` | Bypass an input: `none`, `temporary` or `permanent` |
-| `protege_wx.pulse_output` | An output on for N seconds, timed by the controller |
+| **Permissions** | View status and the event log. Control only the areas, doors and outputs you want in Home Assistant. |
+| **Session timeout** | About **15 minutes**. The integration keeps one session open and logs out when it stops. If Home Assistant crashes, the controller frees the session after this time. |
+| **Don't give it** | Programming or user-management rights. If it's allowed to read names and settings it uses them; if not, it still works. |
 
-### Bus events
-- `protege_wx_event`: every meaningful event-log line.
-- `protege_wx_failed_to_arm`: when an arm fails.
+### 2. Add the integration
+
+[![Add the integration to your Home Assistant.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=protege_wx)
+
+Go to **Settings → Devices & services → Add integration → ICT Protege WX** and enter:
+
+- **Host:** the web interface address and port, for example `192.168.1.10:7377`. Pasting a full `http://…` address works too.
+- **Operator username and password.** The password is never sent to the controller; login is a challenge/response.
+
+Areas, doors, inputs, trouble inputs and outputs are discovered with their names from the controller.
+
+### 3. Options
+
+**Settings → Devices & services → ICT Protege WX → Configure** has three sections:
+
+- **Settings:**
+  - update interval (default 1 s)
+  - "Arming" display
+  - notifications for failed arms
+  - whether a PIN is needed to arm
+  - outputs to add as switches
+- **Input types:** motion, door, window, smoke and so on, per input.
+- **Users and PINs:** add, edit or remove users and choose whether each can arm and disarm. Only a salted hash of each PIN is stored. These users are separate from the controller's own keypad users.
+
+## Apple Home (HomeKit Bridge)
+
+Add these to your HomeKit Bridge and they appear in the Home app:
+
+- the **alarm panel**: Away, Home and Night map to HomeKit's Away, Stay and Night;
+- the **locks**;
+- the **zone sensors**;
+- **Alarm fault**.
+
+Diagnostic and configuration entities, including *Hold open*, are left out of the bridge by default. "Turn on all switches" can't hold every door open.
+
+> [!TIP]
+> If you set up PINs, give the bridge a PIN in the alarm panel's entity configuration (`code:`) so Apple Home can arm and disarm.
+
+## Wall tablets, keypads and Alarmo
+
+Add users and PINs in the options. Any keypad-style alarm card then works: the built-in **Alarm panel** card, or custom cards. You need a valid PIN to disarm, and to arm unless you turn that off. The user's name shows as `changed_by`.
+
+Already using **[Alarmo](https://github.com/nielsfaber/alarmo)**? Keep Alarmo as your keypad and logic layer, and mirror its state to the Protege area with a simple automation. For most homes, the Protege panel and PINs on their own are enough.
+
+## Actions
+
+| Action | Target | What it does |
+|---|---|---|
+| `protege_wx.arm` | alarm panel | Arm in `away`, `stay` or `instant` mode, optionally with `force` and a `code` |
+| `protege_wx.unlock_door` | lock | Timed unlock, or `hold_open: true` to latch |
+| `protege_wx.bypass` | zone sensor | `none`, `temporary` (until disarmed) or `permanent` |
+| `protege_wx.pulse_output` | output switch | On for `seconds`, timed by the controller |
+
+```yaml
+# Force-arm away at night, even if a window was left open
+action: protege_wx.arm
+target:
+  entity_id: alarm_control_panel.alarm
+data:
+  mode: away
+  force: true
+```
+
+## Events and automations
+
+| Event | When |
+|---|---|
+| `protege_wx_event` | Every meaningful event-log line: `kind`, `subject`, `type`, `by`, `user`, `method` |
+| `protege_wx_failed_to_arm` | An arm attempt fails. Includes `area` and the `zones` that stopped it |
+
+The area, door and controller **event entities** carry the same information for the automation editor.
+
+```yaml
+# Tell me who's at the front door
+triggers:
+  - trigger: state
+    entity_id: event.front_door_events
+    attribute: event_type
+    to: access_granted
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      message: "{{ trigger.to_state.attributes.user }} came in the front door"
+```
 
 ### Notifications blueprint
-`blueprints/automation/protege_wx/protege_wx_notifications.yaml` sends push notifications for:
+
+[![Import the blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Folliemaller%2Fha-protege-wx%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fprotege_wx%2Fprotege_wx_notifications.yaml)
+
+One automation that sends push notifications for:
 - the alarm going off;
 - a failed arm, with the zones that stopped it;
 - a door forced or left open;
 - controller faults.
 
-### HomeKit
-- Diagnostic and config entities are left out of the HomeKit Bridge by default.
-- Add the alarm panel, locks, motion sensors and "Alarm fault" to the bridge.
-- If you set up PINs, give the bridge one in the alarm panel's entity configuration (`code:`).
+## How it protects your controller
 
-## Compatibility
+A controller whose session table filled with abandoned sessions has been seen to stall and reboot. This integration is careful:
 
-Both versions of the controller's web protocol are supported, and the integration **detects which one your controller uses**:
-- **Web interface 2.3.x** (tested on 2.3.628.P028 with WX firmware 4.00): requests are HTTP POSTs, and the controller issues a session cookie.
-- **Older web interfaces:** requests are HTTP GETs with a client-generated session, as documented by [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli).
+- **One session.** It logs in once, keeps that session, and logs out on reload and shutdown.
+- **Gentle reconnects.** A dropped session is re-established once. If the controller refuses straight away, logins pause for 30 s, doubling up to 10 minutes, and never exceed 6 in 10 minutes.
+- **No operator lockouts.** A wrong password stops all login attempts after at most two tries and asks you to sign in again.
+- **Small, cheap polls.** Every second it reads area status, zone status and the newest event-log page. Doors, troubles and outputs are read when the log says they changed, and at least every 5 s. Health is read every minute.
+- **Honest states.** Unknown or unreadable states show as unavailable, never as a reassuring *disarmed*, *locked* or *closed*. An arm is reported as successful only after the controller confirms it.
 
-So far it's been tested on one controller. Please open an issue with your web interface version and whether it worked.
+## Troubleshooting
 
-## Installation
+| Problem | Fix |
+|---|---|
+| **"Invalid authentication"** | Log in to the web interface with the same operator to check the details. Check the operator isn't disabled or locked out. |
+| **Can't connect** | Check you can open `http://<host>:<port>` in a browser on the same network as Home Assistant. |
+| **Away won't arm, Home works** | A zone is open (for example someone moving in a room). Check *Ready to arm* or the error message, or use **Force arm away**. |
+| **No "who did it"** | The operator needs permission to view the event log. |
+| **Need help** | Download diagnostics from the integration's ⋮ menu. Passwords, PINs, serials and names in event lines are redacted. Attach it to an [issue](https://github.com/olliemaller/ha-protege-wx/issues). |
 
-### HACS
-1. In HACS, open the menu → **Custom repositories**. Add this repository's URL as type **Integration**.
-2. Install **ICT Protege WX**, then restart Home Assistant.
+Debug logging:
 
-### Manual
-Copy `custom_components/protege_wx` into your Home Assistant `config/custom_components/` folder and restart.
-
-## Setting up the controller
-
-**Create a dedicated operator** in the Protege web interface, for example `homeassistant`:
-- **Permissions:** viewing status and the event log, plus controlling only the areas, doors and outputs you want in Home Assistant.
-- **Session timeout:** about 15 minutes. The integration keeps one session alive while it runs and logs out when it stops; if Home Assistant stops without logging out, the controller frees the session after this time. Operators default to about 1 hour.
-- **Don't give it** programming or user-management rights. The integration reads names and settings if the operator is allowed to, and works without them if it isn't.
-
-## Setting up Home Assistant
-
-Go to **Settings → Devices & services → Add integration → ICT Protege WX** and enter:
-- **Host:** the controller's web interface address and port, for example `192.168.1.10:7377`, without `http://`.
-- **Operator username and password.** The password is never sent to the controller; the login is a challenge/response.
-
-The integration's options have three sections:
-- **Settings:**
-  - update interval (default 1 s)
-  - "Arming" display
-  - failed-arm notifications
-  - PIN required to arm
-  - outputs to add as switches
-- **Input types.**
-- **Users and PINs.**
-
-## How it works, and how it protects the controller
-
-**What it reads, and how often:**
-- **Every second:** area status, input status and the latest page of the event log, as three small encrypted requests over one session.
-- **Door, trouble and output status:** when the event log says they changed, after any command, and at least every 5 seconds.
-- **Controller health:** every minute.
-
-**Protecting the session.** A controller whose session table filled with abandoned sessions has been seen to stall and reboot, so:
-- the integration uses exactly one session and logs out on reload and shutdown;
-- a dropped session is re-established once; if the new one is refused straight away, logins pause for 30 s, doubling up to 10 minutes;
-- there are never more than 6 logins in 10 minutes.
-
-**Protecting the operator from lockout:**
-- A rejected password stops all login attempts and asks you to log in again. At most two failed attempts are made.
-- Unknown or unreadable states show as unavailable, never as a reassuring "disarmed", "locked" or "closed".
+```yaml
+logger:
+  logs:
+    custom_components.protege_wx: debug
+```
 
 ## Development
 
-```
+```bash
 python -m venv .venv && . .venv/bin/activate
-pip install pytest-homeassistant-custom-component
+pip install pytest-homeassistant-custom-component ruff
 pytest
+ruff check custom_components tests
 ```
 
-The tests run against `tests/fake_controller.py`. It speaks both protocols with the real cryptography, and reproduces a real controller's behaviour and event-log lines, including refusing to arm with a zone open.
+Tests run against `tests/fake_controller.py`. It speaks both protocols with the real cryptography and reproduces a real controller's behaviour and event-log lines, including refusing to arm with a zone open. Pull requests are welcome.
 
 ## Credits
 
-The protocol work builds on [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) by Mitchell Johnson (MIT), extended for web interface 2.3.x. The user experience is inspired by [caboose014/ICT-Protege-Home-Assistant](https://github.com/caboose014/ICT-Protege-Home-Assistant). No code is shared with that project.
+- Protocol work builds on [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) by Mitchell Johnson (MIT), extended for web interface 2.3.x.
+- Inspired by [caboose014/ICT-Protege-Home-Assistant](https://github.com/caboose014/ICT-Protege-Home-Assistant). If you *do* have the Automation & Integration licence, that integration uses it. No code is shared.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE). See also [NOTICE](NOTICE).

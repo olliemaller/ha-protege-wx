@@ -1,0 +1,24 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: input
+    id: ha
+    attributes: {label: Home Assistant version, placeholder: "2026.10.4"}
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes: {label: Integration version, placeholder: "0.2.0"}
+    validations: {required: true}
+  - type: input
+    id: web
+    attributes: {label: Protege WX web interface and firmware version, placeholder: "Web 2.3.628.P028, WX 4.00"}
+  - type: textarea
+    id: what
+    attributes: {label: What happened, and what did you expect?}
+    validations: {required: true}
+  - type: textarea
+    id: diag
+    attributes:
+      label: Diagnostics and logs
+      description: Attach diagnostics from the integration's ⋮ menu (credentials, serials and names are redacted) and any debug logs.

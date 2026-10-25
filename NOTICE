@@ -1,0 +1,9 @@
+ha-protege-wx
+Copyright (c) 2026 olliemaller and the ha-protege-wx contributors
+
+Portions of custom_components/protege_wx/wxapi are derived from
+protege-wx-cli (https://github.com/mitchell-johnson/protege-wx-cli),
+Copyright (c) Mitchell Johnson, used under the MIT License.
+
+ICT and Protege are trademarks of Integrated Control Technology Ltd.
+This project is not affiliated with or endorsed by ICT.

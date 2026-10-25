@@ -13,7 +13,7 @@
  * device by itself. Ships with the integration; nothing to add to resources.
  */
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 const FEATURE = { HOME: 1, AWAY: 2, NIGHT: 4, VACATION: 32 };
 
@@ -77,12 +77,13 @@ class ProtegeAlarmCard extends HTMLElement {
       throw new Error("Set entity: to a Protege alarm_control_panel");
     }
     this._config = { show_keypad: true, show_activity: true, activity_count: 5, ...config };
-    this._render();
+    if (this._hass) this._render();
   }
 
   set hass(hass) {
     const old = this._hass;
     this._hass = hass;
+    if (!this._config) return; // Home Assistant may set hass before the config
     const watched = this._watched();
     if (!old || watched.some((id) => old.states[id] !== hass.states[id]) || old.themes?.darkMode !== hass.themes?.darkMode) {
       this._render();
@@ -92,6 +93,10 @@ class ProtegeAlarmCard extends HTMLElement {
 
   getCardSize() {
     return 6;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6, rows: "auto" };
   }
 
   connectedCallback() {
@@ -379,14 +384,34 @@ class ProtegeAlarmCard extends HTMLElement {
   }
 }
 
-if (!customElements.get("protege-alarm-card")) {
+// Loaded early (as an "extra module"), possibly before Home Assistant has set up
+// its own custom-element registry. Defining the card then would put it in a
+// registry the dashboard never looks in, so wait until Home Assistant's own
+// elements are defined, then define the card there.
+function defineCard() {
+  if (customElements.get("protege-alarm-card")) return;
   customElements.define("protege-alarm-card", ProtegeAlarmCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({
-    type: "protege-alarm-card",
-    name: "Protege WX alarm",
-    description: "Arm, disarm, countdown, open zones and recent activity for a Protege WX area. By Arcnode IT.",
-    preview: true,
-  });
+  if (!window.customCards.some((c) => c.type === "protege-alarm-card")) {
+    window.customCards.push({
+      type: "protege-alarm-card",
+      name: "Protege WX alarm",
+      description: "Arm, disarm, countdown, open zones and recent activity for a Protege WX area. By Arcnode IT.",
+      preview: true,
+    });
+  }
   console.info(`%c PROTEGE-ALARM-CARD %c ${VERSION} `, "background:#042C53;color:#fff", "background:#185FA5;color:#fff");
+}
+
+if (customElements.get("ha-card")) {
+  defineCard();
+} else {
+  let tries = 0;
+  const wait = setInterval(() => {
+    tries += 1;
+    if (customElements.get("ha-card") || tries > 600) {
+      clearInterval(wait);
+      defineCard();
+    }
+  }, 100);
 }

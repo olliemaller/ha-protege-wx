@@ -12,6 +12,18 @@
         "state": {
           "off": "mdi:shield-alert"
         }
+      },
+      "forced_open": {
+        "default": "mdi:door-open",
+        "state": {
+          "off": "mdi:door-closed-lock"
+        }
+      },
+      "left_open": {
+        "default": "mdi:door-open",
+        "state": {
+          "off": "mdi:door-closed"
+        }
       }
     },
     "button": {
@@ -23,11 +35,17 @@
       },
       "silence": {
         "default": "mdi:bell-off"
+      },
+      "visitor_unlock": {
+        "default": "mdi:account-clock"
       }
     },
     "switch": {
       "hold_open": {
         "default": "mdi:door-open"
+      },
+      "walk_test": {
+        "default": "mdi:walk"
       }
     },
     "select": {
@@ -52,6 +70,18 @@
         "state": {
           "0": "mdi:shield-check"
         }
+      },
+      "alarm_cause": {
+        "default": "mdi:alarm-light-outline"
+      },
+      "delay_ends": {
+        "default": "mdi:timer-sand"
+      },
+      "last_triggered": {
+        "default": "mdi:motion-sensor"
+      },
+      "last_seen": {
+        "default": "mdi:account-clock-outline"
       }
     }
   },
@@ -67,6 +97,9 @@
     },
     "pulse_output": {
       "service": "mdi:timer-outline"
+    },
+    "visitor_unlock": {
+      "service": "mdi:account-clock"
     }
   }
 }

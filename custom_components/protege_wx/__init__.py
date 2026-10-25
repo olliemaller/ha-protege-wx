@@ -23,6 +23,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
 from .alarmo import AlarmoSync
+from .card import async_register_card
 from .const import (
     CONF_PROTOCOL,
     DOMAIN,
@@ -141,6 +142,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(async_setup_voice(hass))
+    await async_register_card(hass)
     if entry.options.get(OPT_ALARMO_ENTITY) and entry.options.get(OPT_ALARMO_AREA) is not None:
         sync = AlarmoSync(hass, entry)
         sync.async_start()

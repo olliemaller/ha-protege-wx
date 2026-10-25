@@ -267,6 +267,10 @@ ruff check custom_components tests
 
 Tests run against `tests/fake_controller.py`. It speaks both protocols with the real cryptography and reproduces a real controller's behaviour and event-log lines, including refusing to arm with a zone open. Pull requests are welcome.
 
+## Support
+
+Found a bug or want a feature? [Open an issue](https://github.com/olliemaller/ha-protege-wx/issues).
+
 ## Credits
 
 - Protocol work builds on [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) by Mitchell Johnson (MIT), extended for web interface 2.3.x.

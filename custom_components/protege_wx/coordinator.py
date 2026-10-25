@@ -422,7 +422,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
 
     async def async_refresh_all(self) -> None:
         """Re-read everything now (after a command), not just areas and inputs."""
-        self._last_full = 0.0
+        self._last_full = None
         await self.async_refresh()
 
     @staticmethod

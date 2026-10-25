@@ -26,6 +26,7 @@ from .const import CONF_PROTOCOL, DOMAIN, INTEGRATION_AUTHOR
 from .coordinator import ProtegeCoordinator, ProtegeSite, async_discover
 from .entity import controller_device, controller_uid, object_identifier
 from .health import entry_health
+from .visitor import VisitorUnlocks, visitor_store
 from .wxapi import (
     PROTOCOL_AUTO,
     LoginGuard,
@@ -57,6 +58,7 @@ class ProtegeRuntimeData:
     client: ProtegeClient
     coordinator: ProtegeCoordinator
     site: ProtegeSite
+    visitors: VisitorUnlocks | None = None
     areas: dict[int, ProtegeArea] = field(default_factory=dict)
 
 
@@ -120,7 +122,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
         await _close()
         raise
 
-    entry.runtime_data = ProtegeRuntimeData(client, coordinator, site)
+    visitors = VisitorUnlocks(hass, coordinator)
+    await visitors.async_start()
+    entry.runtime_data = ProtegeRuntimeData(client, coordinator, site, visitors)
+    entry.async_on_unload(visitors.async_stop)
     entry.async_on_unload(_close)
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _close))
     if not _HAS_RELOADING_OPTIONS_FLOW:
@@ -203,3 +208,4 @@ async def async_remove_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> 
 
     hass.data.get(DOMAIN, {}).pop(("people", entry.entry_id), None)
     await Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.people").async_remove()
+    await visitor_store(hass, entry.entry_id).async_remove()

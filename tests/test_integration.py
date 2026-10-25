@@ -1256,3 +1256,104 @@ async def test_options_flow_areas(hass: HomeAssistant, controller) -> None:
     await hass.async_block_till_done()
     assert entry.options["night_mode"] == {"16": "stay"}
     assert entry.options["delays"] == {"16": {"exit": 30, "entry": 45}}
+
+
+# ── 0.3.0: doors ───────────────────────────────────────────────────────────
+
+
+async def _refresh_all(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    await entry.runtime_data.coordinator.async_refresh_all()
+    await hass.async_block_till_done()
+
+
+def _door_commands(controller, door: int = 0) -> list[int]:
+    return [
+        int(dict(p.split("=", 1) for p in c.split("&") if "=" in p)["Command"])
+        for c in controller.state.commands
+        if "SubType=GXT_DOORS_TBL" in c and f"RecId={door}&" in c
+    ]
+
+
+async def test_visitor_unlock_relocks(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    await hass.services.async_call(
+        DOMAIN, "visitor_unlock", {"entity_id": "lock.front_door", "minutes": 2}, blocking=True
+    )
+    assert _door_commands(controller) == [2]  # latched unlock
+    assert _state(hass, "lock.front_door") == "unlocked"
+    assert hass.states.get("lock.front_door").attributes["visitor_until"] is not None
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=1))
+    await hass.async_block_till_done()
+    assert _door_commands(controller) == [2]
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=2, seconds=5))
+    await hass.async_block_till_done()
+    assert _door_commands(controller) == [2, 0]
+    await _refresh_all(hass, entry)
+    assert _state(hass, "lock.front_door") == "locked"
+    assert hass.states.get("lock.front_door").attributes["visitor_until"] is None
+
+
+async def test_visitor_unlock_cancelled_by_manual_lock(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = _entry(controller, visitor_minutes=5)
+    await _setup(hass, entry)
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.front_door_visitor_unlock"}, blocking=True
+    )
+    until = dt_util.parse_datetime(hass.states.get("lock.front_door").attributes["visitor_until"])
+    assert 290 <= (until - dt_util.utcnow()).total_seconds() <= 300  # the configured 5 minutes
+    controller.state.doors[0][0] = 0  # locked at the keypad
+    await _refresh_all(hass, entry)
+    controller.state.doors[0][0] = 9  # then held open on purpose by a schedule
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=6))
+    await hass.async_block_till_done()
+    assert _door_commands(controller) == [2]  # not re-locked
+
+
+async def test_visitor_unlock_survives_reload(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    await hass.services.async_call(DOMAIN, "visitor_unlock", {"entity_id": "lock.gate"}, blocking=True)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=2))  # flush the save
+    await hass.async_block_till_done()
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=16))
+    await hass.async_block_till_done()
+    assert _door_commands(controller, 1) == [2, 0]
+
+
+async def test_door_forced_and_left_open(hass: HomeAssistant, controller) -> None:
+    registry = er.async_get(hass)
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    # No door-position input in the fake: the sensors start disabled.
+    forced = registry.async_get("binary_sensor.front_door_forced_open")
+    assert forced is not None and forced.disabled_by is not None
+    registry.async_update_entity(forced.entity_id, disabled_by=None)
+    registry.async_update_entity("binary_sensor.front_door_left_open", disabled_by=None)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    controller.state.doors[0][1] = 4
+    await _refresh_all(hass, entry)
+    assert _state(hass, "binary_sensor.front_door_forced_open") == "on"
+    assert _state(hass, "binary_sensor.front_door_left_open") == "off"
+    controller.state.doors[0][1] = 3
+    await _refresh_all(hass, entry)
+    assert _state(hass, "binary_sensor.front_door_forced_open") == "off"
+    assert _state(hass, "binary_sensor.front_door_left_open") == "on"

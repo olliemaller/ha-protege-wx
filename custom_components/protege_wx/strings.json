@@ -185,6 +185,12 @@
       },
       "alarm_fault": {
         "name": "Alarm fault"
+      },
+      "forced_open": {
+        "name": "Forced open"
+      },
+      "left_open": {
+        "name": "Left open"
       }
     },
     "select": {
@@ -206,6 +212,9 @@
       },
       "silence": {
         "name": "Silence siren"
+      },
+      "visitor_unlock": {
+        "name": "Visitor unlock"
       }
     },
     "switch": {
@@ -438,6 +447,16 @@
         "seconds": {
           "name": "Seconds",
           "description": "1 to 65535."
+        }
+      }
+    },
+    "visitor_unlock": {
+      "name": "Visitor unlock",
+      "description": "Hold a door unlocked for a set time, then lock it again. Locking the door sooner cancels it.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "How long to keep it unlocked. Leave out to use the time set in the integration's options (15 minutes unless changed)."
         }
       }
     }

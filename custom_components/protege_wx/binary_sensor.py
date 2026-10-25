@@ -46,6 +46,8 @@ async def async_setup_entry(
     for door in data.site.doors.values():
         if door.has_position_input:
             entities.append(ProtegeDoorPositionSensor(coordinator, door))
+        entities.append(ProtegeDoorAlertSensor(coordinator, door, "forced_open"))
+        entities.append(ProtegeDoorAlertSensor(coordinator, door, "left_open"))
     for rec_id, name in data.site.trouble_inputs.items():
         entities.append(ProtegeTroubleSensor(coordinator, rec_id, name))
     for area in data.site.areas.values():
@@ -159,6 +161,34 @@ class ProtegeDoorPositionSensor(_ProtegeBinarySensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         status = self._status
         return {} if status is None else {"controller_state": status.position}
+
+
+class ProtegeDoorAlertSensor(_ProtegeBinarySensor):
+    """Door forced open, or left open past its alarm time. Needs a door-position
+    input to mean anything, so it starts disabled on doors without one."""
+
+    def __init__(self, coordinator: ProtegeCoordinator, door: DoorInfo, alert: str) -> None:
+        super().__init__(coordinator, "door", door.id, key=alert, own_device=True)
+        self._alert = alert
+        self._attr_translation_key = alert
+        self._attr_device_class = (
+            BinarySensorDeviceClass.SAFETY if alert == "forced_open" else BinarySensorDeviceClass.PROBLEM
+        )
+        self._attr_entity_registry_enabled_default = door.has_position_input is not False
+
+    @property
+    def _status(self):
+        return self.coordinator.data.doors.get(self.rec_id)
+
+    @property
+    def available(self) -> bool:
+        status = self._status
+        return super().available and status is not None and status.is_open is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        status = self._status
+        return None if status is None or status.is_open is None else status.position == self._alert
 
 
 class ProtegeTroubleSensor(_ProtegeBinarySensor):

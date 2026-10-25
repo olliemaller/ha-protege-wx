@@ -83,6 +83,8 @@ class FakeController:
         self.voltage_mv = 13566
         self.deny_events = False  # operator without event-log permission
         self.offline = False
+        self.exit_delay = 60
+        self.entry_delay = 45
         self.clock = datetime(2026, 10, 25, 19, 21, 0)
         self.app = web.Application()
         self.app.router.add_route("*", "/PRT_CTRL_DIN_ISAPI.dll", self._handle)
@@ -207,7 +209,7 @@ class FakeController:
                     return f"InputId={rec}&Area1=2147483647&ZoneType1=2147483647"
                 return f"InputId={rec}&Area1=16&ZoneType1={ZONE_TYPES[rec]}&Area2=2147483647"
             if sub == "GXT_AREAS_TBL":
-                return f"AreaId={rec}&EnableStayArming=true&EnableInstantArming=true"
+                return f"AreaId={rec}&EnableStayArming=true&EnableInstantArming=true&ExitDelay={self.exit_delay}&EntryDelay={self.entry_delay}"
             if sub == "GXT_DOORS_TBL":
                 return f"DoorId={rec}&DoorPositionInput=2147483647"
             return ""

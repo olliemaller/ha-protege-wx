@@ -1,21 +1,27 @@
-"""Sensors: supply voltage, memory, last event, connection and open zones."""
+"""Sensors: supply voltage, memory, last event, connection, open zones, alarm
+cause, delay countdown, zone last-triggered and person last-seen."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfElectricPotential
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
-from .coordinator import AreaInfo, ProtegeCoordinator
+from .const import DOMAIN
+from .coordinator import AreaInfo, InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
-from .wxapi.events import ParsedEvent
+from .wxapi.events import KIND_ACCESS, ParsedEvent
 
 PARALLEL_UPDATES = 0
 
@@ -32,10 +38,14 @@ async def async_setup_entry(
         ProtegeLastEvent(coordinator),
         ProtegeConnection(coordinator),
     ]
-    entities += [
-        ProtegeOpenZones(coordinator, area) for area in entry.runtime_data.site.areas.values()
-    ]
+    site = entry.runtime_data.site
+    for area in site.areas.values():
+        entities.append(ProtegeOpenZones(coordinator, area))
+        entities.append(ProtegeAlarmCause(coordinator, area))
+        entities.append(ProtegeDelayEnds(coordinator, area))
+    entities += [ProtegeLastTriggered(coordinator, info) for info in site.inputs.values()]
     async_add_entities(entities)
+    await _setup_people(hass, entry, coordinator, async_add_entities)
 
 
 def _number(value: str | None) -> float | None:
@@ -200,3 +210,157 @@ class ProtegeOpenZones(ProtegeEntity, SensorEntity):
             "ready_away": not away,
             "ready_home": not home,
         }
+
+
+class _AreaSensor(ProtegeEntity, SensorEntity):
+    def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo, key: str) -> None:
+        super().__init__(coordinator, "area", area.id, key=key, own_device=True)
+        self._attr_entity_registry_enabled_default = area.has_inputs is not False
+
+
+class ProtegeAlarmCause(_AreaSensor):
+    """The zone that set the alarm off. Kept until the area is disarmed."""
+
+    _attr_translation_key = "alarm_cause"
+
+    def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo) -> None:
+        super().__init__(coordinator, area, "alarm_cause")
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.alarm_cause.get(self.rec_id) or "none"
+
+
+class ProtegeDelayEnds(_AreaSensor):
+    """When the current exit or entry delay ends (shown as a countdown)."""
+
+    _attr_translation_key = "delay_ends"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo) -> None:
+        super().__init__(coordinator, area, "delay_ends")
+
+    @property
+    def native_value(self) -> datetime | None:
+        delay = self.coordinator.delay_ends.get(self.rec_id)
+        return delay[1] if delay else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        delay = self.coordinator.delay_ends.get(self.rec_id)
+        return {
+            "phase": delay[0] if delay else None,
+            "exit_delay": self.coordinator.area_delay(self.rec_id, "exit"),
+            "entry_delay": self.coordinator.area_delay(self.rec_id, "entry"),
+        }
+
+
+class ProtegeLastTriggered(ProtegeEntity, RestoreSensor):
+    """When a zone last opened (motion seen, a door opened...)."""
+
+    _attr_translation_key = "last_triggered"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: ProtegeCoordinator, info: InputInfo) -> None:
+        super().__init__(coordinator, "input", info.id, key="last_triggered", own_device=True)
+        self._attr_entity_registry_enabled_default = info.in_use
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if self.rec_id in self.coordinator.last_triggered:
+            return
+        last = await self.async_get_last_sensor_data()
+        value = last.native_value if last is not None else None
+        if isinstance(value, str):
+            value = dt_util.parse_datetime(value)
+        if isinstance(value, datetime):
+            self.coordinator.last_triggered[self.rec_id] = value
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.last_triggered.get(self.rec_id)
+
+
+# ── people ────────────────────────────────────────────────────────────────
+
+_PEOPLE_STORE_VERSION = 1
+
+
+async def _setup_people(
+    hass: HomeAssistant,
+    entry: ProtegeConfigEntry,
+    coordinator: ProtegeCoordinator,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """One "last seen" sensor per person who badges in at a door, created on
+    first sight and remembered (when and where) across restarts."""
+    # Kept in memory across reloads too, since a delayed save may not have
+    # been written yet when the entry reloads.
+    cache: dict = hass.data.setdefault(DOMAIN, {})
+    key = ("people", entry.entry_id)
+    if key not in cache:
+        store: Store[dict[str, Any]] = Store(
+            hass, _PEOPLE_STORE_VERSION, f"{DOMAIN}.{entry.entry_id}.people"
+        )
+        cache[key] = (store, (await store.async_load() or {}).get("people", {}))
+    store, people = cache[key]
+    sensors: dict[str, ProtegePersonLastSeen] = {}
+
+    def add(name: str) -> None:
+        sensors[name] = ProtegePersonLastSeen(coordinator, name, people)
+        async_add_entities([sensors[name]])
+
+    for name in people:
+        add(name)
+
+    @callback
+    def on_event(parsed: ParsedEvent) -> None:
+        if parsed.kind != KIND_ACCESS or parsed.event_type != "access_granted" or not parsed.user:
+            return
+        name = parsed.user
+        people[name] = {
+            "time": dt_util.utcnow().isoformat(),
+            "door": parsed.subject,
+            "method": parsed.method,
+        }
+        store.async_delay_save(lambda: {"people": people}, 5)
+        if name in sensors:
+            if sensors[name].hass is not None:
+                sensors[name].async_write_ha_state()
+        else:
+            add(name)
+
+    entry.async_on_unload(coordinator.async_add_event_listener(on_event))
+
+
+def person_slug(name: str) -> str:
+    return "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_") or "unknown"
+
+
+class ProtegePersonLastSeen(ProtegeEntity, SensorEntity):
+    """When and where a person last badged in (card or PIN at a door)."""
+
+    _attr_translation_key = "last_seen"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(
+        self, coordinator: ProtegeCoordinator, name: str, people: dict[str, dict[str, Any]]
+    ) -> None:
+        super().__init__(coordinator, "person", 0, key=person_slug(name))
+        self._person = name
+        self._people = people
+        self._attr_translation_placeholders = {"person": name}
+
+    @property
+    def available(self) -> bool:
+        return True  # history, not live status
+
+    @property
+    def native_value(self) -> datetime | None:
+        record = self._people.get(self._person, {})
+        return dt_util.parse_datetime(record["time"]) if record.get("time") else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        record = self._people.get(self._person, {})
+        return {"person": self._person, "door": record.get("door"), "method": record.get("method")}

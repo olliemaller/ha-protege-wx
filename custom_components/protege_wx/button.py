@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
+from .const import OPT_NIGHT_MODE
 from .coordinator import AreaInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 
@@ -18,10 +19,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     data = entry.runtime_data
+    night_modes: dict[str, str] = entry.options.get(OPT_NIGHT_MODE, {})
     entities: list[ButtonEntity] = []
     for area in data.site.areas.values():
         entities.append(ProtegeForceArmButton(entry, data.coordinator, area, "away"))
-        if area.instant_enabled:
+        # "Force arm night" forces an instant arm; the controller can't force stay.
+        if area.instant_enabled and night_modes.get(str(area.id), "instant") == "instant":
             entities.append(ProtegeForceArmButton(entry, data.coordinator, area, "instant"))
         entities.append(ProtegeSilenceButton(entry, data.coordinator, area))
     async_add_entities(entities)

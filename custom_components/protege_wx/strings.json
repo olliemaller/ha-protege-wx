@@ -54,6 +54,7 @@
         "title": "Protege WX options",
         "menu_options": {
           "settings": "Settings",
+          "areas": "Alarm areas",
           "inputs": "Input types",
           "users": "Users and PINs"
         }
@@ -65,14 +66,16 @@
           "show_arming": "Show the exit delay as \"Arming\"",
           "notify_failed_arm": "Notify when the alarm fails to arm",
           "code_arm_required": "Require a PIN to arm",
-          "outputs": "Outputs to add as switches"
+          "outputs": "Outputs to add as switches",
+          "visitor_minutes": "Visitor unlock time"
         },
         "data_description": {
           "scan_interval": "How often to read area and zone status and the event log. 1 second is quick and light; doors and troubles are read at least every 5 seconds.",
           "show_arming": "Leave off for Apple Home. While off, the alarm shows the mode being armed (Home, Away or Night) as soon as the exit delay starts. The HomeKit Bridge shows every \"Arming\" state as Away.",
           "notify_failed_arm": "Shows a notification naming the zones that stopped the alarm arming, from Home Assistant or a keypad.",
           "code_arm_required": "Only applies once you add users. Disarming always needs a PIN when users exist.",
-          "outputs": "Only outputs you pick are added. Leave out keypad LEDs, beepers, the bell and door locks."
+          "outputs": "Only outputs you pick are added. Leave out keypad LEDs, beepers, the bell and door locks.",
+          "visitor_minutes": "How long a door's \"Visitor unlock\" button (and the protege_wx.visitor_unlock action, unless it says otherwise) holds the door unlocked before locking it again."
         }
       },
       "inputs": {
@@ -121,6 +124,10 @@
         "data": {
           "remove": "Users to remove"
         }
+      },
+      "areas": {
+        "title": "Alarm areas",
+        "description": "**Night arms as** picks what Home Assistant's Night mode does on the controller: an instant arm (no entry delay), a stay arm (perimeter only, like Home), or nothing (Night is hidden).\n\nThe exit and entry delays drive the countdown sensor and the alarm card. They're read from the controller where it reports them; set them here to match your programming if they're wrong."
       }
     },
     "error": {
@@ -134,7 +141,8 @@
     "abort": {
       "not_loaded": "The integration has to be running to change these options.",
       "no_inputs": "This controller has no inputs.",
-      "user_not_found": "That user no longer exists."
+      "user_not_found": "That user no longer exists.",
+      "no_areas": "This controller has no areas with zones."
     }
   },
   "selector": {
@@ -151,6 +159,13 @@
         "gas": "Gas detector",
         "moisture": "Water leak",
         "safety": "Panic / safety"
+      }
+    },
+    "night_mode": {
+      "options": {
+        "instant": "Instant arm (no entry delay)",
+        "stay": "Stay arm (like Home)",
+        "off": "Off (hide Night)"
       }
     }
   },
@@ -247,6 +262,33 @@
             "name": "Ready to arm home"
           }
         }
+      },
+      "alarm_cause": {
+        "name": "Alarm cause"
+      },
+      "delay_ends": {
+        "name": "Delay ends",
+        "state_attributes": {
+          "phase": {
+            "name": "Phase",
+            "state": {
+              "exit": "Exit delay",
+              "entry": "Entry delay"
+            }
+          },
+          "exit_delay": {
+            "name": "Exit delay"
+          },
+          "entry_delay": {
+            "name": "Entry delay"
+          }
+        }
+      },
+      "last_triggered": {
+        "name": "Last triggered"
+      },
+      "last_seen": {
+        "name": "{person} last seen"
       }
     },
     "event": {
@@ -292,7 +334,10 @@
               "trouble": "Trouble",
               "trouble_restored": "Trouble restored",
               "power_up": "Power up",
-              "other": "Other"
+              "other": "Other",
+              "duress": "Duress",
+              "panic": "Panic",
+              "medical": "Medical"
             }
           }
         }
@@ -338,6 +383,9 @@
     },
     "bypass_while_armed": {
       "message": "Bypassing a zone while its area is armed needs a PIN. Use the Bypass zone action with a PIN, or disarm first."
+    },
+    "night_off": {
+      "message": "Night mode is turned off for this area. Pick what Night arms as in the integration's options (Alarm areas)."
     }
   },
   "services": {
@@ -406,6 +454,22 @@
     "event_log_unreadable": {
       "title": "Protege WX can't read the event log",
       "description": "The operator {operator} hasn't been able to read the controller's event log for 5 minutes. Without it, Home Assistant can't show who armed, disarmed or opened a door, and can't tell you why the alarm didn't arm.\n\nIn the Protege web interface, open the operator's role and allow it to view events (the event log / review permission), then wait a minute. This alert clears by itself once the log can be read."
+    },
+    "clock_drift": {
+      "title": "Protege WX clock is {minutes} minutes out",
+      "description": "The controller's clock is about {minutes} minutes {direction} Home Assistant's. Event times in the logbook, the controller's own event log and any time-based programming (schedules, auto-arming) will be off by the same amount.\n\nSet the time in the Protege web interface (System > Date and Time) or turn on its time server (NTP) setting. This alert clears by itself once the clocks agree."
+    },
+    "emergency": {
+      "title": "Protege WX {kind} alarm",
+      "description": "The controller reported a **{kind}** alarm in {area} ({by}).\n\nController log: {text}\n\nYour monitoring centre will have received this too. Check everyone is safe, then mark this as handled.",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Mark the {kind} alarm as handled",
+            "description": "This only clears the alert in Home Assistant. It doesn't change anything on the controller."
+          }
+        }
+      }
     }
   }
 }

@@ -18,7 +18,7 @@ from homeassistant.helpers import entity_platform
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
-from .const import DOMAIN, OPT_SHOW_ARMING
+from .const import DOMAIN, OPT_NIGHT_MODE, OPT_SHOW_ARMING
 from .coordinator import ARM_FAILED, ARM_OK, AreaInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 from .users import UserCodes
@@ -40,8 +40,12 @@ async def async_setup_entry(
     data = entry.runtime_data
     codes = data.coordinator.codes
     show_arming = entry.options.get(OPT_SHOW_ARMING, False)
+    night_modes: dict[str, str] = entry.options.get(OPT_NIGHT_MODE, {})
     entities = [
-        ProtegeArea(data.coordinator, area, codes, show_arming)
+        ProtegeArea(
+            data.coordinator, area, codes, show_arming,
+            night_modes.get(str(area.id), "instant"),
+        )
         for area in data.site.areas.values()
     ]
     data.areas = {entity.rec_id: entity for entity in entities}
@@ -69,18 +73,31 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
         area: AreaInfo,
         codes: UserCodes,
         show_arming: bool,
+        night_mode: str = "instant",
     ) -> None:
         super().__init__(coordinator, "area", area.id, own_device=True)
         self.area = area
         self._codes = codes
         self._show_arming = show_arming
+        # What Home Assistant's "Night" arms on the controller: instant, stay or nothing.
+        if night_mode == "stay" and not area.stay_enabled:
+            night_mode = "off"
+        if night_mode == "instant" and not area.instant_enabled:
+            night_mode = "off"
+        self.night_mode = night_mode
+        # The Home Assistant mode last asked for (night, vacation), shown while
+        # the controller is armed in the matching controller mode.
+        self._requested: tuple[str, AlarmControlPanelState] | None = None
+        self._seen_armed = False
         # Areas with no inputs (e.g. the "System Area" that only carries
         # troubles) start disabled; they can be enabled by hand.
         self._attr_entity_registry_enabled_default = area.has_inputs is not False
-        features = AlarmControlPanelEntityFeature.ARM_AWAY
+        features = (
+            AlarmControlPanelEntityFeature.ARM_AWAY | AlarmControlPanelEntityFeature.ARM_VACATION
+        )
         if area.stay_enabled:
             features |= AlarmControlPanelEntityFeature.ARM_HOME
-        if area.instant_enabled:
+        if self.night_mode != "off":
             features |= AlarmControlPanelEntityFeature.ARM_NIGHT
         self._attr_supported_features = features
         if codes.enabled:
@@ -159,12 +176,34 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
         return AlarmControlPanelState.DISARMED  # 0, or 1-5 = disarmed, not ready
 
     @staticmethod
-    def _armed_mode(status) -> AlarmControlPanelState:
+    def _controller_mode(status) -> str:
         if "partial_armed" in status.flags:
-            return AlarmControlPanelState.ARMED_HOME
+            return "stay"
         if "instant_armed" in status.flags:
+            return "instant"
+        return "away"
+
+    def _armed_mode(self, status) -> AlarmControlPanelState:
+        mode = self._controller_mode(status)
+        if self._requested and self._requested[0] == mode:
+            return self._requested[1]  # e.g. Night mapped to stay, or Vacation
+        if mode == "stay":
+            return AlarmControlPanelState.ARMED_HOME
+        if mode == "instant":
             return AlarmControlPanelState.ARMED_NIGHT
         return AlarmControlPanelState.ARMED_AWAY
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        status = self._status
+        if status is not None and status.known:
+            if status.is_armed_or_arming:
+                self._seen_armed = True
+            elif self._seen_armed:
+                # Armed, then disarmed: the request is over.
+                self._seen_armed = False
+                self._requested = None
+        super()._handle_coordinator_update()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -219,13 +258,25 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
             translation_placeholders={"area": self.area.name},
         )
 
-    async def _arm(self, mode: str, force: bool, code: str | None) -> None:
+    async def _arm(
+        self,
+        mode: str,
+        force: bool,
+        code: str | None,
+        as_state: AlarmControlPanelState | None = None,
+    ) -> None:
         if mode == "stay" and force:
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="force_stay_unsupported"
             )
         await self._authorise(code, "arm")
-        await self._arm_now(mode, force)
+        self._requested = (mode, as_state) if as_state else None
+        self._seen_armed = False
+        try:
+            await self._arm_now(mode, force)
+        except Exception:
+            self._requested = None
+            raise
 
     async def async_alarm_disarm(self, code: str | None = None) -> None:
         await self._authorise(code, "disarm")
@@ -238,7 +289,12 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
         await self._arm("stay", False, code)
 
     async def async_alarm_arm_night(self, code: str | None = None) -> None:
-        await self._arm("instant", False, code)
+        if self.night_mode == "off":
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="night_off")
+        await self._arm(self.night_mode, False, code, as_state=AlarmControlPanelState.ARMED_NIGHT)
+
+    async def async_alarm_arm_vacation(self, code: str | None = None) -> None:
+        await self._arm("away", False, code, as_state=AlarmControlPanelState.ARMED_VACATION)
 
     async def async_service_arm(self, mode: str, force: bool = False, code: str | None = None) -> None:
         """The protege_wx.arm action: arm in a mode, optionally forcing."""

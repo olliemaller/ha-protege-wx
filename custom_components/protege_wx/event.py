@@ -23,6 +23,7 @@ from .wxapi.events import (
     KIND_ACCESS,
     KIND_AREA,
     KIND_DOOR,
+    KIND_EMERGENCY,
     KIND_SYSTEM,
     KIND_TROUBLE,
     ParsedEvent,
@@ -113,4 +114,4 @@ class ProtegeControllerEvents(_ProtegeEvents):
         super().__init__(coordinator, "controller", 0, key="events")
 
     def _matches(self, parsed: ParsedEvent) -> bool:
-        return parsed.kind in (KIND_TROUBLE, KIND_SYSTEM)
+        return parsed.kind in (KIND_TROUBLE, KIND_SYSTEM, KIND_EMERGENCY)

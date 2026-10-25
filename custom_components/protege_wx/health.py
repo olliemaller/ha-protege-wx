@@ -10,14 +10,20 @@ entry being unloaded) clears any left over from before.
 """
 from __future__ import annotations
 
+import statistics
 import time
+from collections.abc import Iterable
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 
 from .const import (
+    CLOCK_DRIFT_CLEAR,
+    CLOCK_DRIFT_SECONDS,
     DOMAIN,
     EVENT_LOG_EMPTY_SECONDS,
+    ISSUE_CLOCK,
+    ISSUE_EMERGENCY,
     ISSUE_EVENT_LOG,
     ISSUE_LOW_VOLTAGE,
     ISSUE_UNREACHABLE,
@@ -27,7 +33,9 @@ from .const import (
     UNREACHABLE_ISSUE_SECONDS,
 )
 
-ALL_ISSUES = (ISSUE_UNREACHABLE, ISSUE_LOW_VOLTAGE, ISSUE_EVENT_LOG)
+# Cleared automatically when the condition ends. ISSUE_EMERGENCY is not in
+# this list: it stays until someone acknowledges it in Repairs.
+ALL_ISSUES = (ISSUE_UNREACHABLE, ISSUE_LOW_VOLTAGE, ISSUE_EVENT_LOG, ISSUE_CLOCK)
 
 
 def entry_health(hass: HomeAssistant, entry_id: str) -> EntryHealth:
@@ -106,6 +114,42 @@ class EntryHealth:
             self._events_empty_since = now
         if now - self._events_empty_since >= EVENT_LOG_EMPTY_SECONDS:
             self._raise(ISSUE_EVENT_LOG, ir.IssueSeverity.WARNING, {"operator": operator})
+
+    @callback
+    def check_clock(self, drift: Iterable[float]) -> None:
+        """``drift``: recent (controller - Home Assistant) clock differences, s."""
+        samples = list(drift)
+        if len(samples) < 3:
+            return
+        median = statistics.median(samples)
+        if abs(median) < CLOCK_DRIFT_CLEAR:
+            self._clear(ISSUE_CLOCK)
+        elif abs(median) > CLOCK_DRIFT_SECONDS:
+            self._raise(
+                ISSUE_CLOCK,
+                ir.IssueSeverity.WARNING,
+                {
+                    "minutes": str(round(abs(median) / 60)),
+                    "direction": "ahead of" if median > 0 else "behind",
+                },
+            )
+
+    @callback
+    def raise_emergency(self, kind: str, area: str, by: str, text: str) -> None:
+        """A duress, panic or medical alarm. Stays until acknowledged."""
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self.issue_id(ISSUE_EMERGENCY),
+            is_fixable=True,
+            is_persistent=True,
+            severity=ir.IssueSeverity.CRITICAL,
+            translation_key=ISSUE_EMERGENCY,
+            translation_placeholders={
+                "kind": kind, "area": area or "-", "by": by or "-", "text": text,
+            },
+            data={"entry_id": self.entry_id},
+        )
 
     @callback
     def clear_all(self) -> None:

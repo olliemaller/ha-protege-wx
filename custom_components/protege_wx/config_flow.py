@@ -27,18 +27,23 @@ from .const import (
     CONF_SERIAL,
     DEFAULT_INPUT_TYPE,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_VISITOR_MINUTES,
     DOMAIN,
     INPUT_TYPES,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    NIGHT_MODES,
     OPT_CODE_ARM_REQUIRED,
+    OPT_DELAYS,
     OPT_INPUT_TYPES,
+    OPT_NIGHT_MODE,
     OPT_NOTIFY_FAILED_ARM,
     OPT_OUTPUTS,
     OPT_PANEL_CODE,
     OPT_SCAN_INTERVAL,
     OPT_SHOW_ARMING,
     OPT_USERS,
+    OPT_VISITOR_MINUTES,
     USER_CAN_ARM,
     USER_CAN_DISARM,
     USER_NAME,
@@ -231,6 +236,12 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
         return ProtegeOptionsFlow()
 
 
+def _area_key(area, field: str) -> str:
+    """Field key shown as the label, since area names aren't translatable."""
+    label = {"night": "Night arms as", "exit": "exit delay", "entry": "entry delay"}[field]
+    return f"{area.name}: {label}"
+
+
 def _input_key(info) -> str:
     """Field key shown as the label, since input names aren't translatable."""
     return f"{info.name} (input {info.id})"
@@ -263,7 +274,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 await self.hass.async_add_executor_job(make_user, "Panel code", legacy)
             ]
         self._base = options
-        return self.async_show_menu(step_id="init", menu_options=["settings", "inputs", "users"])
+        return self.async_show_menu(step_id="init", menu_options=["settings", "areas", "inputs", "users"])
 
     # ── settings ───────────────────────────────────────────────────────────
 
@@ -278,6 +289,9 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                     OPT_NOTIFY_FAILED_ARM: bool(user_input.get(OPT_NOTIFY_FAILED_ARM, True)),
                     OPT_CODE_ARM_REQUIRED: bool(user_input.get(OPT_CODE_ARM_REQUIRED, True)),
                     OPT_OUTPUTS: [str(rec_id) for rec_id in user_input.get(OPT_OUTPUTS, [])],
+                    OPT_VISITOR_MINUTES: int(
+                        user_input.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES)
+                    ),
                 }
             )
         schema = vol.Schema(
@@ -315,9 +329,69 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(
+                    OPT_VISITOR_MINUTES,
+                    default=options.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1, max=240, step=1, unit_of_measurement="min",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
             }
         )
         return self.async_show_form(step_id="settings", data_schema=schema)
+
+    # ── areas: night mode and delays ───────────────────────────────────────
+
+    async def async_step_areas(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        runtime = self.config_entry.runtime_data
+        areas = [a for a in runtime.site.areas.values() if a.has_inputs is not False]
+        if not areas:
+            return self.async_abort(reason="no_areas")
+        options = self._options()
+        night: dict[str, str] = dict(options.get(OPT_NIGHT_MODE, {}))
+        delays: dict[str, dict[str, int]] = dict(options.get(OPT_DELAYS, {}))
+        if user_input is not None:
+            for area in areas:
+                key = str(area.id)
+                night[key] = user_input.get(_area_key(area, "night"), "off")
+                delays[key] = {
+                    "exit": int(user_input[_area_key(area, "exit")]),
+                    "entry": int(user_input[_area_key(area, "entry")]),
+                }
+            return self._save(**{OPT_NIGHT_MODE: night, OPT_DELAYS: delays})
+        seconds = selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0, max=600, step=1, unit_of_measurement="s",
+                mode=selector.NumberSelectorMode.BOX,
+            )
+        )
+        fields: dict[Any, Any] = {}
+        for area in areas:
+            modes = [
+                m for m in NIGHT_MODES
+                if m == "off"
+                or (m == "instant" and area.instant_enabled)
+                or (m == "stay" and area.stay_enabled)
+            ]
+            current = night.get(str(area.id), "instant")
+            if current not in modes:
+                current = "off"
+            fields[vol.Required(_area_key(area, "night"), default=current)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=modes, translation_key="night_mode",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+            coordinator = runtime.coordinator
+            fields[vol.Required(
+                _area_key(area, "exit"), default=coordinator.area_delay(area.id, "exit")
+            )] = seconds
+            fields[vol.Required(
+                _area_key(area, "entry"), default=coordinator.area_delay(area.id, "entry")
+            )] = seconds
+        return self.async_show_form(step_id="areas", data_schema=vol.Schema(fields))
 
     # ── input types ────────────────────────────────────────────────────────
 

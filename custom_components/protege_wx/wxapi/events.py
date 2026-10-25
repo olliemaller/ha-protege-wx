@@ -32,6 +32,7 @@ KIND_INPUT = "input"
 KIND_TROUBLE = "trouble"
 KIND_SYSTEM = "system"
 KIND_NOISE = "noise"
+KIND_EMERGENCY = "emergency"
 
 AREA_EVENT_TYPES = (
     "armed", "arming_started", "arming_cancelled", "failed_to_arm",
@@ -41,7 +42,13 @@ DOOR_EVENT_TYPES = (
     "access_granted", "access_denied", "unlocked", "locked",
     "opened", "closed", "forced_open", "left_open", "other",
 )
-CONTROLLER_EVENT_TYPES = ("trouble", "trouble_restored", "power_up", "other")
+CONTROLLER_EVENT_TYPES = (
+    "trouble", "trouble_restored", "power_up", "duress", "panic", "medical", "other",
+)
+EMERGENCY_TYPES = ("duress", "panic", "medical")
+# Words the controller uses for user-raised emergencies. Matched as whole
+# words so names like "Panic Room" in an unrelated line are unlikely to trip it.
+_EMERGENCY = re.compile(r"\b(duress|panic|medical|hold[ -]?up)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -200,6 +207,19 @@ class EventParser:
         text = event.text
         if event.is_noise:
             return ParsedEvent(event, KIND_NOISE)
+
+        emergency = _EMERGENCY.search(text)
+        if emergency and not text.startswith(("Input ", "Door ", "Trouble Input ")):
+            word = emergency.group(1).lower()
+            event_type = "duress" if word == "duress" else "medical" if word == "medical" else "panic"
+            area = None
+            if text.startswith("Area "):
+                found = _match_name(text[5:], self.areas)
+                area = found[0] if found else None
+            _, by = _split_by(text)
+            if by is None and text.startswith("User "):
+                by = text[5:emergency.start()].strip() or None
+            return ParsedEvent(event, KIND_EMERGENCY, area, event_type, by=_clean_user(by))
 
         if text.startswith("Area "):
             found = _match_name(text[5:], self.areas)

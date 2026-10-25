@@ -18,6 +18,7 @@ from .wxapi.events import (
     KIND_ACCESS,
     KIND_AREA,
     KIND_DOOR,
+    KIND_EMERGENCY,
     KIND_SYSTEM,
     KIND_TROUBLE,
     ParsedEvent,
@@ -111,6 +112,11 @@ def describe(
         if kind_type == "trouble_restored":
             return name, "trouble cleared"
         return name, _fallback(parsed)
+
+    if kind == KIND_EMERGENCY:
+        label = kind_type if kind_type in ("duress", "medical") else "panic"
+        where = f" in {subject}" if subject else ""
+        return CONTROLLER_NAME, f"{label} alarm{where}{_by(who)}"
 
     if kind == KIND_SYSTEM and kind_type == "power_up":
         return CONTROLLER_NAME, "powered up"

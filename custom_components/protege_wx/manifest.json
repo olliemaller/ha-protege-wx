@@ -1,6 +1,12 @@
 {
   "domain": "protege_wx",
   "name": "ICT Protege WX",
+  "after_dependencies": [
+    "conversation",
+    "frontend",
+    "http",
+    "repairs"
+  ],
   "codeowners": [
     "@olliemaller"
   ],

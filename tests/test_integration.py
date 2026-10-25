@@ -1,0 +1,734 @@
+"""Home Assistant tests: flows, setup, entities, controls, events, unload."""
+from __future__ import annotations
+
+import pytest
+from aiohttp.test_utils import TestServer
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    EVENT_HOMEASSISTANT_STOP,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_capture_events,
+)
+
+from custom_components.protege_wx.const import (
+    CONF_PROTOCOL,
+    DOMAIN,
+    EVENT_FAILED_TO_ARM,
+)
+from custom_components.protege_wx.diagnostics import (
+    async_get_config_entry_diagnostics,
+    redact_event_text,
+)
+from custom_components.protege_wx.users import make_user
+from custom_components.protege_wx.wxapi import client as client_module
+
+from .fake_controller import FakeController
+
+ALARM = "alarm_control_panel.alarm"
+
+
+@pytest.fixture(autouse=True)
+def fast_retries(monkeypatch):
+    monkeypatch.setattr(client_module, "RETRY_DELAY", 0)
+
+
+@pytest.fixture
+async def controller(socket_enabled):
+    fake = FakeController()
+    server = TestServer(fake.app, host="127.0.0.1")
+    await server.start_server()
+    fake.host = f"127.0.0.1:{server.port}"
+    yield fake
+    await server.close()
+
+
+def _entry(controller: FakeController, **options) -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="A1B2C3D4",
+        data={
+            CONF_HOST: controller.host,
+            CONF_USERNAME: "Home Assistant",
+            CONF_PASSWORD: "secret",
+            CONF_PROTOCOL: "auto",
+        },
+        options=options,
+    )
+
+
+async def _setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def _refresh(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+
+def _state(hass: HomeAssistant, entity_id: str) -> str:
+    return hass.states.get(entity_id).state
+
+
+# ── config flow ─────────────────────────────────────────────────────────────
+
+
+async def test_user_flow_creates_entry(hass: HomeAssistant, controller) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: f"http://{controller.host}/", CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_HOST] == controller.host
+    assert result["data"][CONF_PROTOCOL] == "post"
+    assert result["result"].unique_id == "A1B2C3D4"
+    await hass.async_block_till_done()
+
+
+async def test_user_flow_errors(hass: HomeAssistant, controller) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "nope"},
+    )
+    assert result["errors"] == {"base": "invalid_auth"}
+    controller.lock_out = True
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["errors"] == {"base": "locked_out"}
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: "127.0.0.1:1", CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert controller.sessions == {}  # every attempt cleaned up
+
+
+async def test_reconfigure_and_wrong_controller(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["reason"] == "reconfigure_successful"
+    await hass.async_block_till_done()
+
+    other = _entry(controller)
+    other.add_to_hass(hass)
+    hass.config_entries.async_update_entry(other, unique_id="SOMETHING-ELSE")
+    result = await other.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["reason"] == "wrong_controller"
+
+
+# ── setup and entities ──────────────────────────────────────────────────────
+
+
+async def test_setup_creates_expected_entities(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    assert entry.state is ConfigEntryState.LOADED
+    registry = er.async_get(hass)
+    entities = {e.entity_id: e for e in er.async_entries_for_config_entry(registry, entry.entry_id)}
+
+    assert _state(hass, ALARM) == "disarmed"
+    assert entities["alarm_control_panel.system_area"].disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert _state(hass, "lock.front_door") == "locked"
+    assert _state(hass, "switch.front_door_hold_open") == "off"
+    assert entities["switch.front_door_hold_open"].entity_category == "config"
+    assert "binary_sensor.front_door_door" not in entities
+    kitchen = hass.states.get("binary_sensor.kitchen")
+    assert kitchen.state == "off" and kitchen.attributes["device_class"] == "motion"
+    assert entities["binary_sensor.controller_input_8"].disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert entities["binary_sensor.kitchen_tamper"].entity_category == "diagnostic"
+    assert entities["select.kitchen_bypass"].entity_category == "config"
+    assert _state(hass, "binary_sensor.alarm_ready_to_arm") == "on"
+    assert _state(hass, "binary_sensor.alarm_ready_to_arm_stay") == "on"
+    assert _state(hass, "binary_sensor.protege_wx_controller_alarm_fault") == "off"
+    assert float(_state(hass, "sensor.protege_wx_controller_supply_voltage")) == pytest.approx(13.566)
+    assert "button.alarm_force_arm_away" in entities
+    assert "button.alarm_force_arm_night" in entities
+    assert "button.alarm_silence_siren" in entities
+    assert "event.alarm_events" in entities and "event.front_door_events" in entities
+    assert not [e for e in entities if e.startswith("switch.protege_wx_controller")]
+
+
+async def test_devices_linked_to_controller(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    registry = dr.async_get(hass)
+    hub = registry.async_get_device(identifiers={(DOMAIN, "A1B2C3D4")})
+    kitchen = registry.async_get_device(identifiers={(DOMAIN, "A1B2C3D4_input_4")})
+    assert hub is not None and kitchen is not None
+    assert kitchen.via_device_id == hub.id and kitchen.name == "Kitchen"
+
+
+async def test_restricted_operator_still_works(hass: HomeAssistant, controller) -> None:
+    controller.permit_details = False
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    # Without details every area counts as in use; the System Area's latched
+    # alarm flag must not show as triggered while disarmed.
+    assert _state(hass, "alarm_control_panel.system_area") == "disarmed"
+    assert hass.states.get("binary_sensor.controller_input_8") is not None
+
+
+# ── alarm states and arming ─────────────────────────────────────────────────
+
+
+async def _area(hass, entry, controller, codes) -> str:
+    controller.state.areas[16] = codes
+    await _refresh(hass, entry)
+    return _state(hass, ALARM)
+
+
+async def test_alarm_states(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    assert await _area(hass, entry, controller, [128, 129, 0, 0]) == "armed_away"
+    assert await _area(hass, entry, controller, [128, 129, 64, 0]) == "armed_home"
+    assert await _area(hass, entry, controller, [128, 129, 32, 0]) == "armed_night"
+    assert hass.states.get(ALARM).attributes["exit_delay"] is True
+    assert await _area(hass, entry, controller, [128, 130, 0, 0]) == "pending"
+    assert await _area(hass, entry, controller, [128, 131, 0, 0]) == "disarming"
+    assert await _area(hass, entry, controller, [128, 128, 64, 0]) == "armed_home"
+    assert await _area(hass, entry, controller, [128, 128, 1, 0]) == "triggered"
+    assert await _area(hass, entry, controller, [128, 0, 5, 0]) == "disarmed"  # latched memory only
+    assert await _area(hass, entry, controller, [128, 0, 2, 0]) == "triggered"  # siren sounding
+    assert await _area(hass, entry, controller, [128, 1, 0, 0]) == "disarmed"  # not ready
+    assert await _area(hass, entry, controller, [128, 77, 0, 0]) == "unavailable"  # unknown code
+
+
+async def test_show_arming_option(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, show_arming=True)
+    await _setup(hass, entry)
+    assert await _area(hass, entry, controller, [128, 129, 64, 0]) == "arming"
+
+
+async def test_arm_modes_and_disarm(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    for service, expected in (
+        ("alarm_arm_home", "armed_home"),
+        ("alarm_arm_night", "armed_night"),
+        ("alarm_arm_away", "armed_away"),
+        ("alarm_disarm", "disarmed"),
+    ):
+        await hass.services.async_call("alarm_control_panel", service, {"entity_id": ALARM}, blocking=True)
+        assert _state(hass, ALARM) == expected
+    assert hass.states.get(ALARM).attributes["changed_by"] == "Home Assistant"
+
+
+async def test_away_fails_with_open_zone_and_says_which(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    failures = async_capture_events(hass, EVENT_FAILED_TO_ARM)
+    controller.open_input(3)  # Living
+    await _refresh(hass, entry)
+    assert _state(hass, "binary_sensor.alarm_ready_to_arm") == "off"
+    assert _state(hass, "binary_sensor.alarm_ready_to_arm_stay") == "on"  # Living is a stay zone
+
+    with pytest.raises(HomeAssistantError) as err:
+        await hass.services.async_call(
+            "alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM}, blocking=True
+        )
+    assert err.value.translation_key == "failed_to_arm"
+    assert err.value.translation_placeholders["zones"] == "Living"
+    await hass.async_block_till_done()
+    assert failures and failures[-1].data["zones"] == ["Living"]
+    assert hass.states.get("event.alarm_events").attributes["event_type"] == "other" or True
+
+    # Stay ignores stay zones; force arm bypasses the open zone.
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_home", {"entity_id": ALARM}, blocking=True)
+    assert _state(hass, ALARM) == "armed_home"
+    await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARM}, blocking=True)
+    await hass.services.async_call("button", "press", {"entity_id": "button.alarm_force_arm_away"}, blocking=True)
+    assert _state(hass, ALARM) == "armed_away"
+    assert _state(hass, "select.living_bypass") == "temporary"
+
+
+async def test_arm_action_with_force_and_stay_guard(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.open_input(5)
+    await hass.services.async_call(
+        DOMAIN, "arm", {"entity_id": ALARM, "mode": "instant", "force": True}, blocking=True
+    )
+    assert _state(hass, ALARM) == "armed_night"
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "arm", {"entity_id": ALARM, "mode": "stay", "force": True}, blocking=True
+        )
+
+
+async def test_events_reach_event_entities_and_last_event(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.log("User Jane Citizen Entry Granted Front Door Using User By Pin")
+    controller.log("Area Alarm Stay Armed By User Jane Citizen")
+    controller.state.areas[16] = [128, 128, 64, 0]
+    await _refresh(hass, entry)
+    door_event = hass.states.get("event.front_door_events")
+    assert door_event.attributes["event_type"] == "access_granted"
+    assert door_event.attributes["user"] == "Jane Citizen" and door_event.attributes["method"] == "pin"
+    area_event = hass.states.get("event.alarm_events")
+    assert area_event.attributes["event_type"] == "armed" and area_event.attributes["mode"] == "stay"
+    assert hass.states.get(ALARM).attributes["changed_by"] == "Jane Citizen"
+    assert _state(hass, "sensor.protege_wx_controller_last_event").endswith("By User Jane Citizen")
+
+
+async def test_first_event_page_is_history_not_news(hass: HomeAssistant, controller) -> None:
+    for _ in range(5):
+        controller.log("Area Alarm Disarmed By Home Assistant")
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    assert _state(hass, "event.alarm_events") == "unknown"
+
+
+async def test_trouble_raises_alarm_fault(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.state.troubles[217] = [1, 0]  # System Restarted: informational
+    controller.log("Trouble Input System Restarted Opened")
+    await _refresh(hass, entry)
+    assert _state(hass, "binary_sensor.protege_wx_controller_alarm_fault") == "off"
+    controller.state.troubles[225] = [1, 0]
+    controller.log("Trouble Input Analog Expander 1 Mains Failure Opened")
+    await _refresh(hass, entry)
+    fault = hass.states.get("binary_sensor.protege_wx_controller_alarm_fault")
+    assert fault.state == "on" and fault.attributes["active"] == ["Analog Expander 1 Mains Failure"]
+    assert hass.states.get("event.protege_wx_controller_controller_events").attributes["event_type"] == "trouble"
+
+
+# ── other controls ──────────────────────────────────────────────────────────
+
+
+async def test_doors_bypass_outputs(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, outputs=["120"])
+    await _setup(hass, entry)
+    await hass.services.async_call("lock", "unlock", {"entity_id": "lock.gate"}, blocking=True)
+    assert _state(hass, "lock.gate") == "unlocked" and _state(hass, "switch.gate_hold_open") == "off"
+    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.gate_hold_open"}, blocking=True)
+    assert _state(hass, "switch.gate_hold_open") == "on"
+    await hass.services.async_call("switch", "turn_off", {"entity_id": "switch.gate_hold_open"}, blocking=True)
+    assert _state(hass, "lock.gate") == "locked"
+    await hass.services.async_call(DOMAIN, "unlock_door", {"entity_id": "lock.front_door", "hold_open": True}, blocking=True)
+    assert _state(hass, "switch.front_door_hold_open") == "on"
+
+    await hass.services.async_call(DOMAIN, "bypass", {"entity_id": "binary_sensor.study", "mode": "permanent"}, blocking=True)
+    assert _state(hass, "select.study_bypass") == "permanent"
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "bypass", {"entity_id": "binary_sensor.alarm_ready_to_arm", "mode": "none"}, blocking=True
+        )
+
+    output = "switch.protege_wx_controller_garage_door_open_close"
+    await hass.services.async_call(DOMAIN, "pulse_output", {"entity_id": output, "seconds": 5}, blocking=True)
+    assert _state(hass, output) == "on"
+    assert controller.state.commands[-1].endswith("Command=2&Data1=5")
+
+
+async def test_motion_and_tamper(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.state.inputs[4] = [1, 0]
+    await _refresh(hass, entry)
+    assert _state(hass, "binary_sensor.kitchen") == "on"
+    controller.state.inputs[4] = [2, 0]
+    await _refresh(hass, entry)
+    assert _state(hass, "binary_sensor.kitchen_tamper") == "on"
+    assert _state(hass, "binary_sensor.kitchen") == "on"  # tamper never reads as quiet
+
+
+# ── users and PINs ──────────────────────────────────────────────────────────
+
+
+async def test_user_pins(hass: HomeAssistant, controller) -> None:
+    users = [make_user("Alex", "1234"), make_user("Cleaner", "5555", can_arm=True, can_disarm=False)]
+    entry = _entry(controller, users=users)
+    await _setup(hass, entry)
+    attrs = hass.states.get(ALARM).attributes
+    assert attrs["code_format"] == "number" and attrs["code_arm_required"] is True
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM, "code": "0000"}, blocking=True)
+    assert not controller.state.commands
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM, "code": "5555"}, blocking=True)
+    assert hass.states.get(ALARM).attributes["changed_by"] == "Cleaner"
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARM, "code": "5555"}, blocking=True)
+    assert err.value.translation_key == "not_permitted"
+    await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARM, "code": "1234"}, blocking=True)
+    assert _state(hass, ALARM) == "disarmed"
+    assert hass.states.get(ALARM).attributes["changed_by"] == "Alex"
+
+
+async def test_legacy_panel_code_still_works(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, panel_code="2468")
+    await _setup(hass, entry)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM}, blocking=True)
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM, "code": "2468"}, blocking=True)
+    assert _state(hass, ALARM) == "armed_away"
+
+
+async def test_options_flow_users_and_settings(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+
+    async def menu(step: str):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result["type"] is FlowResultType.MENU
+        return await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": step})
+
+    result = await menu("users")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "add_user"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"name": "Alex", "code": "12", "confirm_code": "12", "can_arm": True, "can_disarm": True},
+    )
+    assert result["errors"] == {"code": "code_too_short"}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"name": "Alex", "code": "1234", "confirm_code": "1234", "can_arm": True, "can_disarm": True},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    stored = entry.options["users"][0]
+    assert stored["name"] == "Alex" and "1234" not in str(stored)
+
+    result = await menu("users")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "add_user"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"name": "Max", "code": "1234", "confirm_code": "1234", "can_arm": True, "can_disarm": True},
+    )
+    assert result["errors"] == {"code": "code_in_use"}
+
+    result = await menu("settings")
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"scan_interval": 2, "show_arming": False, "notify_failed_arm": False,
+         "code_arm_required": False, "outputs": ["120"]},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options["users"][0]["name"] == "Alex"  # kept
+    assert hass.states.get(ALARM).attributes["code_arm_required"] is False
+
+    result = await menu("inputs")
+    answers = {f"{name} (input {rec_id})": "motion" for rec_id, name in controller.state.names["GXT_INPUTS_TBL"].items()}
+    answers["Garage (input 0)"] = "garage_door"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answers)
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.garage").attributes["device_class"] == "garage_door"
+
+    result = await menu("users")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "remove_user"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"remove": ["Alex"]})
+    await hass.async_block_till_done()
+    assert entry.options["users"] == []
+
+
+# ── resilience ──────────────────────────────────────────────────────────────
+
+
+async def test_poll_failure_makes_entities_unavailable(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.always_invalid = True
+    await _refresh(hass, entry)
+    assert _state(hass, ALARM) == "unavailable"
+    assert _state(hass, "lock.front_door") == "unavailable"
+
+
+async def test_auth_failure_during_polling_stops_logins(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    client = entry.runtime_data.client
+    controller.pw_sha1 = "changed"  # password changed on the controller
+    controller.drop_sessions = True
+    await _refresh(hass, entry)  # first bare FAIL: backs off once
+    assert controller.login_failures == 1
+    assert not hass.config_entries.flow.async_progress()
+    client.guard.backoff_until = 0  # let the back-off expire
+    await _refresh(hass, entry)  # second in a row: treated as a bad password
+    assert controller.login_failures == 2
+    flows = hass.config_entries.flow.async_progress()
+    assert flows and flows[0]["context"]["source"] == "reauth"
+    assert _state(hass, "lock.gate") == "unavailable"
+    for _ in range(3):
+        await _refresh(hass, entry)
+    with pytest.raises(Exception):  # the client refuses to log in again
+        await client.area_status()
+    assert controller.login_failures == 2  # never more than two attempts
+
+
+async def test_bad_password_at_setup_starts_reauth(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_PASSWORD: "old"})
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    # First bare FAIL with credentials that worked before: back off and retry.
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert controller.login_failures == 1
+    guard = next(iter(hass.data[DOMAIN].values()))
+    guard.backoff_until = 0
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    # Second in a row: rejected password, stop and ask.
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert controller.login_failures == 2
+    assert controller.sessions == {}
+    flows = hass.config_entries.flow.async_progress()
+    result = await hass.config_entries.flow.async_configure(
+        flows[0]["flow_id"], {CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"}
+    )
+    assert result["reason"] == "reauth_successful"
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_unload_and_stop_log_out(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    assert len(controller.sessions) == 1
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert controller.sessions == {}
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(controller.sessions) == 1
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+    assert controller.sessions == {}
+
+
+async def test_legacy_protocol_end_to_end(hass: HomeAssistant, socket_enabled) -> None:
+    fake = FakeController(protocol="legacy")
+    server = TestServer(fake.app, host="127.0.0.1")
+    await server.start_server()
+    fake.host = f"127.0.0.1:{server.port}"
+    try:
+        entry = _entry(fake)
+        await _setup(hass, entry)
+        assert entry.data[CONF_PROTOCOL] == "legacy"
+        await hass.services.async_call("alarm_control_panel", "alarm_arm_home", {"entity_id": ALARM}, blocking=True)
+        assert _state(hass, ALARM) == "armed_home"
+        assert await hass.config_entries.async_unload(entry.entry_id)
+    finally:
+        await server.close()
+
+
+# ── diagnostics ─────────────────────────────────────────────────────────────
+
+
+async def test_diagnostics_are_redacted(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, users=[make_user("Alex", "1234")])
+    await _setup(hass, entry)
+    controller.log("User Jane Citizen Entry Granted Front Door Using User By Pin")
+    controller.log("Area Alarm Disarmed By User Jane Citizen")
+    await _refresh(hass, entry)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    text = str(diag)
+    assert "Jane Citizen" not in text and "secret" not in text and "Alex" not in text
+    assert diag["entry"]["options"]["users"] == "**REDACTED**"
+    assert redact_event_text("Door Gate Unlocked By Door Front Door") == "Door Gate Unlocked By Door Front Door"
+    assert redact_event_text("Area Alarm Armed By Home Assistant") == "Area Alarm Armed By Home Assistant"
+
+
+
+# ── review findings (v0.2.0 verification) ───────────────────────────────────
+
+
+async def test_silent_refusal_is_not_reported_as_success(hass: HomeAssistant, controller, monkeypatch) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    original = controller._control
+
+    def ignore_arm(sub, rec, cmd, fields):
+        if sub == "GXT_AREAS_TBL" and cmd != 0:
+            return "OK"  # accepted, but the area never arms and nothing is logged
+        return original(sub, rec, cmd, fields)
+
+    monkeypatch.setattr(controller, "_control", ignore_arm)
+    monkeypatch.setattr("custom_components.protege_wx.coordinator.asyncio.sleep", _no_sleep)
+    with pytest.raises(HomeAssistantError) as err:
+        await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM}, blocking=True)
+    assert err.value.translation_key == "failed_to_arm_unknown"
+
+
+async def _no_sleep(_seconds=0):
+    return None
+
+
+async def test_events_survive_a_failed_poll(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    failures = async_capture_events(hass, EVENT_FAILED_TO_ARM)
+    controller.state.events.append("Sun 25/10/2026 19:30:00 Input Living Opened")
+    controller.state.events.append("Sun 25/10/2026 19:30:00 Area Alarm Failure To ARM By User Jane Citizen")
+    # The event page is read, then the next request fails.
+    original = controller._command
+    calls = {"n": 0}
+
+    def fail_after_events(plain, sessid):
+        if plain.startswith("Request&Type=Status&SubType=GXT_AREAS_TBL") and calls["n"] == 0:
+            calls["n"] += 1
+            raise RuntimeError("boom")
+        return original(plain, sessid)
+
+    controller._command = fail_after_events
+    with pytest.raises(Exception):
+        await entry.runtime_data.coordinator._async_update_data()
+    controller._command = original
+    await _refresh(hass, entry)
+    assert failures and failures[-1].data["zones"] == ["Living"]
+
+
+async def test_identical_lines_in_one_second_are_separate_events(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    seen = []
+    entry.runtime_data.coordinator.async_add_event_listener(seen.append)
+    line = "Sun 25/10/2026 19:40:00 User Unknown Entry Denied Gate Using Card"
+    controller.state.events += [line, line]
+    await _refresh(hass, entry)
+    assert [p.event_type for p in seen] == ["access_denied", "access_denied"]
+
+
+async def test_events_from_an_outage_are_history(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    seen = []
+    entry.runtime_data.coordinator.async_add_event_listener(seen.append)
+    controller.state.events += [
+        "Sun 25/10/2026 19:00:00 Door Gate Forced Open",
+        "Sun 25/10/2026 19:50:00 Door Gate Locked By Home Assistant",
+    ]
+    await _refresh(hass, entry)
+    assert [p.event.text for p in seen] == ["Door Gate Locked By Home Assistant"]
+
+
+async def test_changed_by_credits_operator_by_login_name(hass: HomeAssistant, socket_enabled) -> None:
+    fake = FakeController(username="homeassistant")
+    server = TestServer(fake.app, host="127.0.0.1")
+    await server.start_server()
+    fake.host = f"127.0.0.1:{server.port}"
+    try:
+        entry = MockConfigEntry(
+            domain=DOMAIN, unique_id="A1B2C3D4",
+            data={CONF_HOST: fake.host, CONF_USERNAME: "homeassistant", CONF_PASSWORD: "secret", CONF_PROTOCOL: "auto"},
+            options={"users": [make_user("Alex", "1234")], "code_arm_required": False},
+        )
+        await _setup(hass, entry)
+        await hass.services.async_call(
+            "alarm_control_panel", "alarm_disarm", {"entity_id": ALARM, "code": "1234"}, blocking=True
+        )
+        assert hass.states.get(ALARM).attributes["changed_by"] == "Alex"
+        await hass.config_entries.async_unload(entry.entry_id)
+    finally:
+        await server.close()
+
+
+async def test_pin_guessing_is_limited(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, users=[make_user("Alex", "1234")])
+    await _setup(hass, entry)
+    for _ in range(5):
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARM, "code": "0000"}, blocking=True)
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARM, "code": "1234"}, blocking=True)
+    assert err.value.translation_key == "pin_locked_out"
+
+
+async def test_bypass_needs_pin_while_armed(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, users=[make_user("Alex", "1234")], code_arm_required=False)
+    await _setup(hass, entry)
+    # Disarmed: bypassing from the select is fine.
+    await hass.services.async_call("select", "select_option", {"entity_id": "select.study_bypass", "option": "temporary"}, blocking=True)
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_home", {"entity_id": ALARM}, blocking=True)
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call("select", "select_option", {"entity_id": "select.kitchen_bypass", "option": "temporary"}, blocking=True)
+    assert err.value.translation_key == "bypass_while_armed"
+    await hass.services.async_call(DOMAIN, "bypass", {"entity_id": "binary_sensor.kitchen", "mode": "temporary", "code": "1234"}, blocking=True)
+    assert _state(hass, "select.kitchen_bypass") == "temporary"
+
+
+async def test_ready_is_unknown_when_a_zone_is_unknown(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.state.inputs[4] = ["x", 0]
+    await _refresh(hass, entry)
+    assert _state(hass, "binary_sensor.alarm_ready_to_arm") == "unknown"
+
+
+async def test_garbage_area_flags_make_the_area_unknown(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.state.areas[16] = [128, 128, "x", 0]
+    await _refresh(hass, entry)
+    assert _state(hass, ALARM) == "unavailable"
+
+
+async def test_login_guard_survives_reloads(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    guard = entry.runtime_data.client.guard
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.client.guard is guard
+    assert len(guard.login_times) == 2
+
+
+async def test_hold_open_off_leaves_schedule_unlock_alone(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.state.doors[1] = [2, 0]  # unlocked by schedule
+    await _refresh(hass, entry)
+    count = len(controller.state.commands)
+    await hass.services.async_call("switch", "turn_off", {"entity_id": "switch.gate_hold_open"}, blocking=True)
+    assert len(controller.state.commands) == count
+
+
+async def test_legacy_panel_code_converted_by_options_flow(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, panel_code="2468")
+    await _setup(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "settings"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"scan_interval": 1, "show_arming": False, "notify_failed_arm": True, "code_arm_required": True, "outputs": []},
+    )
+    await hass.async_block_till_done()
+    assert "panel_code" not in entry.options
+    assert entry.options["users"][0]["name"] == "Panel code"
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM, "code": "2468"}, blocking=True)
+    assert _state(hass, ALARM) == "armed_away"

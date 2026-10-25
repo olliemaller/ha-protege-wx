@@ -1,0 +1,137 @@
+blueprint:
+  name: Protege WX notifications
+  description: >-
+    Push notifications from an ICT Protege WX controller (protege_wx integration):
+    the alarm going off, arming failures (with the zones that stopped it), doors
+    forced or left open, and controller faults such as mains failure or a low
+    battery.
+  domain: automation
+  source_url: https://github.com/olliemaller/ha-protege-wx/blob/main/blueprints/automation/protege_wx/protege_wx_notifications.yaml
+  input:
+    alarm_panel:
+      name: Alarm area
+      selector:
+        entity:
+          filter:
+            integration: protege_wx
+            domain: alarm_control_panel
+    door_events:
+      name: Door event entities
+      description: The "Events" entity of each door to watch for forced / left open.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            integration: protege_wx
+            domain: event
+    fault_sensor:
+      name: Alarm fault sensor
+      selector:
+        entity:
+          filter:
+            integration: protege_wx
+            domain: binary_sensor
+            device_class: problem
+    notify_services:
+      name: Notify actions
+      description: >-
+        One per line, for example notify.mobile_app_olivers_iphone. Find yours in
+        Developer tools > Actions by searching "notify.".
+      selector:
+        text:
+          multiline: true
+    notify_alarm:
+      name: Alarm going off
+      default: true
+      selector:
+        boolean:
+    notify_failed_arm:
+      name: Alarm failed to arm
+      default: true
+      selector:
+        boolean:
+    notify_doors:
+      name: Door forced or left open
+      default: true
+      selector:
+        boolean:
+    notify_faults:
+      name: Controller faults
+      default: true
+      selector:
+        boolean:
+
+mode: queued
+max: 10
+
+trigger_variables:
+  alarm_panel: !input alarm_panel
+
+triggers:
+  - trigger: state
+    entity_id: !input alarm_panel
+    to: triggered
+    id: alarm
+  - trigger: event
+    event_type: protege_wx_failed_to_arm
+    id: failed_to_arm
+  - trigger: state
+    entity_id: !input door_events
+    not_from:
+      - unavailable
+      - unknown
+    id: door
+  - trigger: state
+    entity_id: !input fault_sensor
+    from: "off"
+    to: "on"
+    id: fault
+
+variables:
+  services_text: !input notify_services
+  services: >-
+    {{ services_text.split('\n') | map('trim') | reject('equalto', '') | list }}
+  want_alarm: !input notify_alarm
+  want_failed: !input notify_failed_arm
+  want_doors: !input notify_doors
+  want_faults: !input notify_faults
+  area_name: >-
+    {{ state_attr(alarm_panel, 'friendly_name') }}
+  door_type: >-
+    {{ trigger.to_state.attributes.event_type if trigger.id == 'door' and trigger.to_state else '' }}
+  message: >-
+    {% if trigger.id == 'alarm' %}
+      {{ area_name }} is going off.
+    {% elif trigger.id == 'failed_to_arm' %}
+      {{ trigger.event.data.area }} didn't arm{% if trigger.event.data.zones %}: {{ trigger.event.data.zones | join(', ') }} open{% endif %}.
+    {% elif trigger.id == 'door' %}
+      {{ trigger.to_state.name | replace(' Events', '') }} was {{ door_type | replace('_', ' ') }}.
+    {% elif trigger.id == 'fault' %}
+      Alarm fault: {{ (state_attr(trigger.entity_id, 'active') or ['unknown']) | join(', ') }}.
+    {% endif %}
+  wanted: >-
+    {{ (trigger.id == 'alarm' and want_alarm)
+       or (trigger.id == 'failed_to_arm' and want_failed
+           and trigger.event.data.area == area_name)
+       or (trigger.id == 'door' and want_doors and door_type in ['forced_open', 'left_open'])
+       or (trigger.id == 'fault' and want_faults) }}
+
+conditions:
+  - condition: template
+    value_template: "{{ wanted and services | count > 0 }}"
+
+actions:
+  - repeat:
+      for_each: "{{ services }}"
+      sequence:
+        - action: "{{ repeat.item }}"
+          continue_on_error: true
+          data:
+            title: Alarm
+            message: "{{ message | trim }}"
+            data:
+              push:
+                interruption-level: "{{ 'critical' if trigger.id == 'alarm' else 'time-sensitive' }}"
+              ttl: 0
+              priority: high

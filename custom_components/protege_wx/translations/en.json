@@ -1,0 +1,357 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to a Protege WX controller",
+        "description": "Uses the controller's built-in web interface, so no Automation & Integration licence is needed. Use a dedicated operator with only the permissions Home Assistant needs.",
+        "data": {
+          "host": "Host",
+          "username": "Operator username",
+          "password": "Operator password"
+        },
+        "data_description": {
+          "host": "IP address and port of the controller's web interface, for example 192.168.1.10:7377. Leave out http://.",
+          "username": "The operator name you log in to the web interface with.",
+          "password": "The password is never sent to the controller; only a challenge response is."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Log in to the controller again",
+        "description": "The controller at {host} rejected the saved login. Home Assistant has stopped trying so the operator isn't locked out.",
+        "data": {
+          "username": "Operator username",
+          "password": "Operator password"
+        }
+      },
+      "reconfigure": {
+        "title": "Change connection details",
+        "data": {
+          "host": "Host",
+          "username": "Operator username",
+          "password": "Operator password"
+        },
+        "data_description": {
+          "host": "IP address and port of the controller's web interface. Leave out http://."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Can't reach a Protege WX web interface at that address. Check the IP address and port.",
+      "invalid_auth": "The controller rejected the username or password. Repeated failures lock the operator out for a while.",
+      "locked_out": "The operator is locked out for {seconds} seconds after too many failed logins. Wait, then try again.",
+      "unknown": "Unexpected error. Check the Home Assistant log."
+    },
+    "abort": {
+      "already_configured": "This controller is already set up.",
+      "reauth_successful": "Logged in again.",
+      "reconfigure_successful": "Connection details updated.",
+      "wrong_controller": "That address belongs to a different controller."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Protege WX options",
+        "menu_options": {
+          "settings": "Settings",
+          "inputs": "Input types",
+          "users": "Users and PINs"
+        }
+      },
+      "settings": {
+        "title": "Settings",
+        "data": {
+          "scan_interval": "Update interval",
+          "show_arming": "Show the exit delay as \"Arming\"",
+          "notify_failed_arm": "Notify when the alarm fails to arm",
+          "code_arm_required": "Require a PIN to arm",
+          "outputs": "Outputs to add as switches"
+        },
+        "data_description": {
+          "scan_interval": "How often to read area and zone status and the event log. 1 second is quick and light; doors and troubles are read at least every 5 seconds.",
+          "show_arming": "Leave off for Apple Home. While off, the alarm shows the mode being armed (Home, Away or Night) as soon as the exit delay starts. The HomeKit Bridge shows every \"Arming\" state as Away.",
+          "notify_failed_arm": "Shows a notification naming the zones that stopped the alarm arming, from Home Assistant or a keypad.",
+          "code_arm_required": "Only applies once you add users. Disarming always needs a PIN when users exist.",
+          "outputs": "Only outputs you pick are added. Leave out keypad LEDs, beepers, the bell and door locks."
+        }
+      },
+      "inputs": {
+        "title": "Input types",
+        "description": "Pick what each input is, so it shows correctly in Home Assistant and Apple Home."
+      },
+      "users": {
+        "title": "Users and PINs",
+        "description": "People who can arm and disarm from Home Assistant with a PIN, for keypad cards and wall tablets. These are separate from the controller's own keypad users. Current users: {users}",
+        "menu_options": {
+          "add_user": "Add a user",
+          "edit_user": "Change a user",
+          "remove_user": "Remove users"
+        }
+      },
+      "add_user": {
+        "title": "Add a user",
+        "data": {
+          "name": "Name",
+          "code": "PIN",
+          "confirm_code": "PIN again",
+          "can_arm": "Can arm",
+          "can_disarm": "Can disarm"
+        },
+        "data_description": {
+          "code": "At least 4 digits. Only a salted hash is stored."
+        }
+      },
+      "edit_user": {
+        "title": "Change a user",
+        "data": {
+          "name": "User"
+        }
+      },
+      "edit_user_details": {
+        "title": "Change {user}",
+        "data": {
+          "code": "New PIN (leave blank to keep)",
+          "confirm_code": "New PIN again",
+          "can_arm": "Can arm",
+          "can_disarm": "Can disarm"
+        }
+      },
+      "remove_user": {
+        "title": "Remove users",
+        "data": {
+          "remove": "Users to remove"
+        }
+      }
+    },
+    "error": {
+      "code_not_numeric": "Use digits only.",
+      "code_too_short": "Use at least 4 digits.",
+      "code_mismatch": "The PINs don't match.",
+      "code_in_use": "Another user already has that PIN.",
+      "name_required": "Enter a name.",
+      "name_in_use": "There's already a user with that name."
+    },
+    "abort": {
+      "not_loaded": "The integration has to be running to change these options.",
+      "no_inputs": "This controller has no inputs.",
+      "user_not_found": "That user no longer exists."
+    }
+  },
+  "selector": {
+    "input_type": {
+      "options": {
+        "motion": "Motion detector (PIR)",
+        "occupancy": "Occupancy",
+        "door": "Door contact",
+        "window": "Window contact",
+        "garage_door": "Garage door contact",
+        "opening": "Other opening",
+        "vibration": "Vibration / glass break",
+        "smoke": "Smoke detector",
+        "gas": "Gas detector",
+        "moisture": "Water leak",
+        "safety": "Panic / safety"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "tamper": {
+        "name": "Tamper"
+      },
+      "door_position": {
+        "name": "Door"
+      },
+      "ready_to_arm": {
+        "name": "Ready to arm"
+      },
+      "ready_to_arm_stay": {
+        "name": "Ready to arm (stay)"
+      },
+      "alarm_fault": {
+        "name": "Alarm fault"
+      }
+    },
+    "select": {
+      "bypass": {
+        "name": "Bypass",
+        "state": {
+          "none": "Not bypassed",
+          "temporary": "Bypassed until disarmed",
+          "permanent": "Bypassed permanently"
+        }
+      }
+    },
+    "button": {
+      "force_arm_away": {
+        "name": "Force arm away"
+      },
+      "force_arm_instant": {
+        "name": "Force arm night"
+      },
+      "silence": {
+        "name": "Silence siren"
+      }
+    },
+    "switch": {
+      "hold_open": {
+        "name": "Hold open"
+      }
+    },
+    "sensor": {
+      "supply_voltage": {
+        "name": "Supply voltage"
+      },
+      "memory_used": {
+        "name": "Memory used"
+      },
+      "last_event": {
+        "name": "Last event"
+      }
+    },
+    "event": {
+      "area_events": {
+        "name": "Events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "armed": "Armed",
+              "arming_started": "Arming started",
+              "arming_cancelled": "Arming cancelled",
+              "failed_to_arm": "Failed to arm",
+              "disarmed": "Disarmed",
+              "alarm": "Alarm",
+              "other": "Other"
+            }
+          }
+        }
+      },
+      "door_events": {
+        "name": "Events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "access_granted": "Access granted",
+              "access_denied": "Access denied",
+              "unlocked": "Unlocked",
+              "locked": "Locked",
+              "opened": "Opened",
+              "closed": "Closed",
+              "forced_open": "Forced open",
+              "left_open": "Left open",
+              "other": "Other"
+            }
+          }
+        }
+      },
+      "controller_events": {
+        "name": "Controller events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "trouble": "Trouble",
+              "trouble_restored": "Trouble restored",
+              "power_up": "Power up",
+              "other": "Other"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "no_code": {
+      "message": "Enter a PIN."
+    },
+    "invalid_code": {
+      "message": "Wrong PIN."
+    },
+    "not_permitted": {
+      "message": "{user} isn't allowed to do that."
+    },
+    "failed_to_arm": {
+      "message": "{area} didn't arm because these zones were open: {zones}. Close them or use force arm."
+    },
+    "force_stay_unsupported": {
+      "message": "The controller can't force arm in stay mode. Use away or instant."
+    },
+    "command_failed": {
+      "message": "The controller refused the command: {error}"
+    },
+    "auth_failed": {
+      "message": "The controller rejected the saved login. Log in again from the integration's page."
+    },
+    "not_an_input": {
+      "message": "{entity} isn't a Protege input."
+    },
+    "not_an_output": {
+      "message": "{entity} isn't a Protege output."
+    },
+    "failed_to_arm_unknown": {
+      "message": "{area} didn't arm. The controller refused it; check for open zones or troubles, or use force arm."
+    },
+    "arm_unconfirmed": {
+      "message": "Couldn't confirm that {area} armed, because the controller stopped answering. Check the keypad."
+    },
+    "pin_locked_out": {
+      "message": "Too many wrong PINs. Try again in {minutes} minutes."
+    },
+    "bypass_while_armed": {
+      "message": "Bypassing a zone while its area is armed needs a PIN. Use the Bypass zone action with a PIN, or disarm first."
+    }
+  },
+  "services": {
+    "arm": {
+      "name": "Arm",
+      "description": "Arm an area in a mode, optionally forcing it (bypassing open zones until disarmed).",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "away, stay or instant (night)."
+        },
+        "force": {
+          "name": "Force",
+          "description": "Bypass open zones until disarmed. Not available for stay."
+        },
+        "code": {
+          "name": "PIN",
+          "description": "Needed if users are set up and arming needs a PIN."
+        }
+      }
+    },
+    "unlock_door": {
+      "name": "Unlock door",
+      "description": "Unlock a door for its programmed time, or hold it open until locked.",
+      "fields": {
+        "hold_open": {
+          "name": "Hold open",
+          "description": "Keep the door unlocked until it's locked again."
+        }
+      }
+    },
+    "bypass": {
+      "name": "Bypass zone",
+      "description": "Bypass an input until disarmed, permanently, or remove the bypass.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "none, temporary (until disarmed) or permanent."
+        },
+        "code": {
+          "name": "PIN",
+          "description": "Needed when users are set up and the zone's area is armed."
+        }
+      }
+    },
+    "pulse_output": {
+      "name": "Pulse output",
+      "description": "Turn an output on for a number of seconds; the controller turns it off.",
+      "fields": {
+        "seconds": {
+          "name": "Seconds",
+          "description": "1 to 65535."
+        }
+      }
+    }
+  }
+}

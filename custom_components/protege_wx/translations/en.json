@@ -516,12 +516,11 @@
     },
     "emergency": {
       "title": "Protege WX {kind} alarm",
-      "description": "The controller reported a **{kind}** alarm in {area} ({by}).\n\nController log: {text}\n\nYour monitoring centre will have received this too. Check everyone is safe, then mark this as handled.",
       "fix_flow": {
         "step": {
           "confirm": {
             "title": "Mark the {kind} alarm as handled",
-            "description": "This only clears the alert in Home Assistant. It doesn't change anything on the controller."
+            "description": "The controller reported a **{kind}** alarm in {area} ({by}).\n\nController log: {text}\n\nYour monitoring centre will have received this too. Check everyone is safe, then mark this as handled.\n\nSubmitting only clears this alert in Home Assistant. It doesn't change anything on the controller."
           }
         }
       }

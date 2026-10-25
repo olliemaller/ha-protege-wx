@@ -302,7 +302,7 @@ actions:
 
 One automation that sends phone notifications, with buttons that act on them (needs the Companion app):
 
-- the alarm going off, with **Disarm** (type your PIN in the notification) and **Silence**;
+- the entry delay starting, with **Disarm**, and the alarm going off, with **Disarm** (type your PIN in the notification) and **Silence**;
 - duress, panic and medical alarms, as critical alerts;
 - a failed arm with the zones that stopped it, with **Retry when closed** and **Force arm**;
 - a **bedtime reminder** when everyone's home and the alarm is off, with **Arm home**;

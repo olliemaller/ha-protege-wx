@@ -49,6 +49,15 @@ EMERGENCY_TYPES = ("duress", "panic", "medical")
 # Words the controller uses for user-raised emergencies. Matched as whole
 # words so names like "Panic Room" in an unrelated line are unlikely to trip it.
 _EMERGENCY = re.compile(r"\b(duress|panic|medical|hold[ -]?up)\b", re.IGNORECASE)
+# "User Jane Citizen Duress ...": the first emergency word after the name.
+_USER_EMERGENCY = re.compile(
+    r"^User (?P<user>.+?) (?P<word>duress|panic|medical|hold[ -]?up)\b", re.IGNORECASE
+)
+
+
+def _emergency_type(word: str) -> str:
+    word = word.lower()
+    return "duress" if word == "duress" else "medical" if word == "medical" else "panic"
 
 
 @dataclass(frozen=True)
@@ -208,24 +217,19 @@ class EventParser:
         if event.is_noise:
             return ParsedEvent(event, KIND_NOISE)
 
-        emergency = _EMERGENCY.search(text)
-        if emergency and not text.startswith(("Input ", "Door ", "Trouble Input ")):
-            word = emergency.group(1).lower()
-            event_type = "duress" if word == "duress" else "medical" if word == "medical" else "panic"
-            area = None
-            if text.startswith("Area "):
-                found = _match_name(text[5:], self.areas)
-                area = found[0] if found else None
-            _, by = _split_by(text)
-            if by is None and text.startswith("User "):
-                by = text[5:emergency.start()].strip() or None
-            return ParsedEvent(event, KIND_EMERGENCY, area, event_type, by=_clean_user(by))
-
         if text.startswith("Area "):
             found = _match_name(text[5:], self.areas)
             if found:
                 name, rest = found
                 action, by = _split_by(rest)
+                # Emergency words count only in the action, never in the
+                # area's or the user's name ("Panic Room", "By User Medical Centre").
+                emergency = _EMERGENCY.search(action)
+                if emergency:
+                    return ParsedEvent(
+                        event, KIND_EMERGENCY, name, _emergency_type(emergency.group(1)),
+                        by=_clean_user(by), extra={"action": action},
+                    )
                 event_type = _area_type(action)
                 mode = _arming_mode(action) if event_type in ("armed", "arming_started") else None
                 return ParsedEvent(
@@ -274,6 +278,22 @@ class EventParser:
                 event, KIND_ACCESS, door_name, event_type, by=user, user=user,
                 method=_method(method), extra={"direction": access.group("direction").lower()},
             )
+
+        if text.startswith("User "):
+            user_emergency = _USER_EMERGENCY.match(text)
+            if user_emergency:
+                return ParsedEvent(
+                    event, KIND_EMERGENCY, None, _emergency_type(user_emergency.group("word")),
+                    by=_clean_user(user_emergency.group("user").strip()),
+                )
+        elif not text.startswith(("Area ", "Input ", "Door ", "Trouble Input ")):
+            # Any other line (e.g. "Duress Alarm At Keypad 1"), names aside.
+            action, by = _split_by(text)
+            emergency = _EMERGENCY.search(action)
+            if emergency:
+                return ParsedEvent(
+                    event, KIND_EMERGENCY, None, _emergency_type(emergency.group(1)), by=_clean_user(by)
+                )
 
         if text.startswith("System Power Up"):
             return ParsedEvent(event, KIND_SYSTEM, None, "power_up")

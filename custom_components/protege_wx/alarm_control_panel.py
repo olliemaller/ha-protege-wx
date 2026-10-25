@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
@@ -62,7 +63,7 @@ async def async_setup_entry(
     )
 
 
-class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
+class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
     """A Protege area."""
 
     _attr_name = None
@@ -110,6 +111,15 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        # Night (as stay) and Vacation exist only in Home Assistant: carry
+        # them over a restart while the controller is still armed that way.
+        restored = await self.async_get_last_state()
+        if restored is not None:
+            if restored.state == AlarmControlPanelState.ARMED_NIGHT and self.night_mode != "off":
+                self._requested = (self.night_mode, AlarmControlPanelState.ARMED_NIGHT)
+            elif restored.state == AlarmControlPanelState.ARMED_VACATION:
+                self._requested = ("away", AlarmControlPanelState.ARMED_VACATION)
+            self._seen_armed = self._requested is not None
         last = self.coordinator.last_area_event(self.area.name)
         if last is not None:
             self._changed_by = self._credit(last)
@@ -278,6 +288,11 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
         self._seen_armed = False
         try:
             await self._arm_now(mode, force)
+        except HomeAssistantError as err:
+            # Not confirmed yet isn't refused: it may still arm.
+            if getattr(err, "translation_key", None) != "arm_unconfirmed":
+                self._requested = None
+            raise
         except Exception:
             self._requested = None
             raise

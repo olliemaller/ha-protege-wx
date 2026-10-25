@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
-from .const import DEFAULT_VISITOR_MINUTES, OPT_NIGHT_MODE, OPT_VISITOR_MINUTES
+from .const import DEFAULT_VISITOR_MINUTES, DOMAIN, OPT_NIGHT_MODE, OPT_VISITOR_MINUTES
 from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 
@@ -30,6 +30,20 @@ async def async_setup_entry(
         entities.append(ProtegeSilenceButton(entry, data.coordinator, area))
     for door in data.site.doors.values():
         entities.append(ProtegeVisitorButton(data.coordinator, door))
+    # A "Force arm night" button left over from when Night was an instant arm.
+    from homeassistant.helpers import entity_registry as er
+
+    from .entity import controller_uid
+
+    registry = er.async_get(hass)
+    wanted = {entity.unique_id for entity in entities}
+    uid = controller_uid(data.coordinator)
+    for area in data.site.areas.values():
+        stale = f"{uid}_area_{area.id}_force_arm_instant"
+        if stale not in wanted and (
+            entity_id := registry.async_get_entity_id("button", DOMAIN, stale)
+        ):
+            registry.async_remove(entity_id)
     async_add_entities(entities)
 
 

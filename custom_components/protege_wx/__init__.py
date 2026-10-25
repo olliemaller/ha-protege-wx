@@ -224,3 +224,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> 
     hass.data.get(DOMAIN, {}).pop(("people", entry.entry_id), None)
     await Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.people").async_remove()
     await visitor_store(hass, entry.entry_id).async_remove()
+    from homeassistant.helpers import issue_registry as ir
+
+    from .const import ISSUE_EMERGENCY
+
+    ir.async_delete_issue(hass, DOMAIN, f"{ISSUE_EMERGENCY}_{entry.entry_id}")

@@ -88,15 +88,18 @@ class ProtegeDoorLock(ProtegeEntity, LockEntity):
         }
 
     async def async_lock(self, **kwargs: Any) -> None:
+        await self._command(self.coordinator.client.lock_door(self.rec_id))
+        # Only once it has locked: a failed lock must leave the relock pending.
         if self._visitors:
             self._visitors.cancel(self.rec_id)
-        await self._command(self.coordinator.client.lock_door(self.rec_id))
 
     async def async_unlock(self, **kwargs: Any) -> None:
         await self._command(self.coordinator.client.unlock_door(self.rec_id))
 
     async def async_service_unlock(self, hold_open: bool = False) -> None:
         await self._command(self.coordinator.client.unlock_door(self.rec_id, latched=hold_open))
+        if hold_open and self._visitors:
+            self._visitors.cancel(self.rec_id)  # held open on purpose: no relock
 
     async def async_visitor_unlock(self, minutes: int | None = None) -> None:
         """Hold the door unlocked for a while, then lock it again."""

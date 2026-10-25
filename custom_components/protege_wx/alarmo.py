@@ -13,21 +13,39 @@ alarm follows Alarmo's keypads. The controller stays the authority:
 * Either disarmed -> the other is disarmed.
 
 A change made by the sync itself is recognised and not sent back, so the two
-can't bounce off each other.
+can't bounce off each other. Alarmo's state being restored at start-up, or
+Alarmo resetting itself after its own alarm, is never sent to the controller:
+then the controller's state is pushed to Alarmo instead.
+
+Arming or disarming through Alarmo uses Alarmo's own codes, not this
+integration's PINs. The one-way setting ("Protege to Alarmo only") avoids that.
 """
 from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.alarm_control_panel import AlarmControlPanelState
-from homeassistant.const import ATTR_ENTITY_ID
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, State, callback
+from homeassistant.const import ATTR_ENTITY_ID, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Context,
+    Event,
+    HomeAssistant,
+    State,
+    callback,
+)
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import OPT_ALARMO_AREA, OPT_ALARMO_CODE, OPT_ALARMO_ENTITY
+from .const import (
+    OPT_ALARMO_AREA,
+    OPT_ALARMO_CODE,
+    OPT_ALARMO_DIRECTION,
+    OPT_ALARMO_ENTITY,
+)
 
 if TYPE_CHECKING:
     from . import ProtegeConfigEntry
@@ -72,7 +90,11 @@ class AlarmoSync:
         self.alarmo_entity: str = entry.options[OPT_ALARMO_ENTITY]
         self.area_id = int(entry.options[OPT_ALARMO_AREA])
         self.code: str | None = entry.options.get(OPT_ALARMO_CODE) or None
-        self._sent: dict[str, tuple[str, float]] = {}  # entity -> (target, when)
+        self.two_way = entry.options.get(OPT_ALARMO_DIRECTION, "both") == "both"
+        # What the sync last told the Protege area, matched once.
+        self._sent_protege: tuple[str, float] | None = None
+        # Contexts of the sync's own calls to Alarmo.
+        self._contexts: deque[str] = deque(maxlen=20)
         self._remove: CALLBACK_TYPE | None = None
 
     @property
@@ -88,6 +110,7 @@ class AlarmoSync:
         self._remove = async_track_state_change_event(
             self.hass, [area.entity_id, self.alarmo_entity], self._on_change
         )
+        self._reconcile()
 
     @callback
     def async_stop(self) -> None:
@@ -95,48 +118,82 @@ class AlarmoSync:
             self._remove()
             self._remove = None
 
-    def _echo(self, entity_id: str, target: str) -> bool:
-        sent = self._sent.get(entity_id)
-        return bool(sent and sent[0] == target and time.monotonic() - sent[1] < _ECHO_WINDOW)
+    @callback
+    def _reconcile(self) -> None:
+        """Protege is the authority: when either side (re)appears, e.g. after a
+        restart, bring Alarmo into line with the controller, never the reverse."""
+        area = self._area
+        if area is None or area.entity_id is None:
+            return
+        protege = _target(self.hass.states.get(area.entity_id))
+        alarmo = _target(self.hass.states.get(self.alarmo_entity))
+        if protege is not None and alarmo is not None and protege != alarmo:
+            self.hass.async_create_task(self._to_alarmo(protege))
+
+    def _ours(self, state: State) -> bool:
+        context = state.context
+        return context.id in self._contexts or (
+            context.parent_id is not None and context.parent_id in self._contexts
+        )
 
     @callback
     def _on_change(self, event: Event) -> None:
-        entity_id = event.data["entity_id"]
-        new = _target(event.data.get("new_state"))
-        if new is None or new == _target(event.data.get("old_state")):
-            return
-        if self._echo(entity_id, new):
-            return  # the sync did this
         area = self._area
         if area is None:
             return
+        entity_id = event.data["entity_id"]
+        old: State | None = event.data.get("old_state")
+        new: State | None = event.data.get("new_state")
+        new_target = _target(new)
+        if new is None or new_target is None:
+            return
+        if old is None or old.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            # Restored or reconnected, not a change anyone made.
+            self._reconcile()
+            return
+        if new_target == _target(old):
+            return
+
         if entity_id == area.entity_id:
-            other = self.hass.states.get(self.alarmo_entity)
-            if _target(other) != new:
-                self.hass.async_create_task(self._to_alarmo(new))
-        else:
-            if _target(self.hass.states.get(area.entity_id)) != new:
-                self.hass.async_create_task(self._to_protege(new))
+            sent = self._sent_protege
+            if sent and sent[0] == new_target and time.monotonic() - sent[1] < _ECHO_WINDOW:
+                self._sent_protege = None  # the sync did this; match it once only
+                return
+            if _target(self.hass.states.get(self.alarmo_entity)) != new_target:
+                self.hass.async_create_task(self._to_alarmo(new_target))
+            return
+
+        # Alarmo changed.
+        if self._ours(new) or not self.two_way:
+            return
+        if old.state in (AlarmControlPanelState.TRIGGERED, AlarmControlPanelState.PENDING) and (
+            new.context.user_id is None
+        ):
+            # Alarmo resetting itself after its own alarm, not a person disarming.
+            return
+        if _target(self.hass.states.get(area.entity_id)) != new_target:
+            self.hass.async_create_task(self._to_protege(new_target))
 
     async def _to_alarmo(self, target: str) -> None:
-        self._sent[self.alarmo_entity] = (target, time.monotonic())
+        context = Context()
+        self._contexts.append(context.id)
         data: dict[str, Any] = {ATTR_ENTITY_ID: self.alarmo_entity}
         if self.code:
             data["code"] = self.code
         try:
             if target == "disarmed":
                 await self.hass.services.async_call(
-                    "alarm_control_panel", "alarm_disarm", data, blocking=True
+                    "alarm_control_panel", "alarm_disarm", data, blocking=True, context=context
                 )
             elif self.hass.services.has_service("alarmo", "arm"):
                 await self.hass.services.async_call(
                     "alarmo", "arm",
                     {**data, "mode": target, "skip_delay": True, "force": True},
-                    blocking=True,
+                    blocking=True, context=context,
                 )
             else:
                 await self.hass.services.async_call(
-                    "alarm_control_panel", f"alarm_arm_{target}", data, blocking=True
+                    "alarm_control_panel", f"alarm_arm_{target}", data, blocking=True, context=context
                 )
         except HomeAssistantError as err:
             _LOGGER.warning("Alarmo sync: couldn't set %s to %s: %s", self.alarmo_entity, target, err)
@@ -145,10 +202,11 @@ class AlarmoSync:
         area = self._area
         if area is None:
             return
-        self._sent[area.entity_id] = (target, time.monotonic())
+        self._sent_protege = (target, time.monotonic())
         try:
             await area.async_sync_to(target)
         except HomeAssistantError as err:
+            self._sent_protege = None
             _LOGGER.warning("Alarmo sync: the controller refused %s: %s", target, err)
             if target != "disarmed":
                 # Don't leave Alarmo saying armed while the house isn't.

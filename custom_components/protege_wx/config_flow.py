@@ -23,6 +23,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 
 from .const import (
+    ALARMO_DIRECTIONS,
     CONF_PROTOCOL,
     CONF_SERIAL,
     DEFAULT_INPUT_TYPE,
@@ -35,6 +36,7 @@ from .const import (
     NIGHT_MODES,
     OPT_ALARMO_AREA,
     OPT_ALARMO_CODE,
+    OPT_ALARMO_DIRECTION,
     OPT_ALARMO_ENTITY,
     OPT_CODE_ARM_REQUIRED,
     OPT_DELAYS,
@@ -457,10 +459,18 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
             for area in areas:
                 key = str(area.id)
                 night[key] = user_input.get(_area_key(area, "night"), "off")
-                delays[key] = {
-                    "exit": int(user_input[_area_key(area, "exit")]),
-                    "entry": int(user_input[_area_key(area, "entry")]),
+                # Keep only what differs from the controller's own programming,
+                # so a later change on the controller still shows through.
+                chosen = {
+                    phase: int(user_input[_area_key(area, phase)])
+                    for phase in ("exit", "entry")
+                    if int(user_input[_area_key(area, phase)])
+                    != (area.exit_delay if phase == "exit" else area.entry_delay)
                 }
+                if chosen:
+                    delays[key] = chosen
+                else:
+                    delays.pop(key, None)
             return self._save(**{OPT_NIGHT_MODE: night, OPT_DELAYS: delays})
         seconds = selector.NumberSelector(
             selector.NumberSelectorConfig(
@@ -509,6 +519,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
             changes: dict[str, Any] = {
                 OPT_ALARMO_ENTITY: entity,
                 OPT_ALARMO_AREA: int(user_input.get(OPT_ALARMO_AREA, areas[0].id)) if entity else None,
+                OPT_ALARMO_DIRECTION: user_input.get(OPT_ALARMO_DIRECTION, "both"),
             }
             code = (user_input.get(OPT_ALARMO_CODE) or "").strip()
             if code:
@@ -536,6 +547,15 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                     selector.SelectSelectorConfig(
                         options=[selector.SelectOptionDict(value=str(a.id), label=a.name) for a in areas],
                         mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required(
+                    OPT_ALARMO_DIRECTION, default=options.get(OPT_ALARMO_DIRECTION, "both")
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(ALARMO_DIRECTIONS),
+                        translation_key="alarmo_direction",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
                 vol.Optional(OPT_ALARMO_CODE): selector.TextSelector(

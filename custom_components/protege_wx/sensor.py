@@ -334,7 +334,12 @@ async def _setup_people(
 
 
 def person_slug(name: str) -> str:
-    return "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_") or "unknown"
+    """Unique-id part for a person: readable, plus a short hash so names that
+    tidy to the same text ("J Smith", "J. Smith") stay apart."""
+    import hashlib
+
+    slug = "".join(ch if ch.isalnum() else "_" for ch in name.lower()).strip("_") or "person"
+    return f"{slug}_{hashlib.sha1(name.encode()).hexdigest()[:6]}"
 
 
 class ProtegePersonLastSeen(ProtegeEntity, SensorEntity):

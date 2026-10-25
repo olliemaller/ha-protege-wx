@@ -217,7 +217,11 @@ Already using **[Alarmo](https://github.com/nielsfaber/alarmo)**? Turn on **Alar
 
 - the controller has the final say. If it refuses to arm because a zone is open, Alarmo is disarmed again, so the two never disagree about whether the house is protected;
 - arming from a Protege keypad arms Alarmo straight away, skipping Alarmo's own exit delay;
+- after a restart, Alarmo is set to match the controller, never the other way round;
 - if Alarmo asks for a code from automations, save it in the sync options.
+
+> [!IMPORTANT]
+> Both ways, anyone who can arm or disarm Alarmo can do the same to the real alarm, with Alarmo's codes rather than the PINs set up here. Make sure Alarmo asks for a code to disarm, or choose **Protege to Alarmo only**.
 
 For most homes, the Protege panel and PINs on their own are enough.
 

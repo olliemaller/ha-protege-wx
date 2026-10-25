@@ -1,12 +1,33 @@
 blueprint:
   name: Protege WX notifications
+  author: Oliver Maller, Arcnode IT
   description: >-
-    Push notifications from an ICT Protege WX controller (protege_wx integration):
-    the alarm going off, arming failures (with the zones that stopped it), doors
-    forced or left open, and controller faults such as mains failure or a low
-    battery.
+    Phone notifications for an ICT Protege WX alarm (protege_wx integration),
+    with buttons that act on them.
+
+
+    - **Alarm going off**, with Disarm (asks for your PIN) and Silence buttons.
+
+    - **Duress, panic or medical** alarms, as critical alerts.
+
+    - **Failed to arm**, naming the open zones, with Retry when closed and
+    Force arm buttons.
+
+    - **Bedtime reminder** when everyone's home and the alarm is off, with an
+    Arm home button.
+
+    - **Door left unlocked**, with a Lock button.
+
+    - **Doors forced or left open**, and **controller faults** such as mains
+    failure or a low battery.
+
+
+    Buttons need the Home Assistant Companion app. PINs typed into a
+    notification are checked by the integration exactly like a keypad card.
   domain: automation
   source_url: https://github.com/olliemaller/ha-protege-wx/blob/main/blueprints/automation/protege_wx/protege_wx_notifications.yaml
+  homeassistant:
+    min_version: "2025.1.0"
   input:
     alarm_panel:
       name: Alarm area
@@ -15,24 +36,6 @@ blueprint:
           filter:
             integration: protege_wx
             domain: alarm_control_panel
-    door_events:
-      name: Door event entities
-      description: The "Events" entity of each door to watch for forced / left open.
-      default: []
-      selector:
-        entity:
-          multiple: true
-          filter:
-            integration: protege_wx
-            domain: event
-    fault_sensor:
-      name: Alarm fault sensor
-      selector:
-        entity:
-          filter:
-            integration: protege_wx
-            domain: binary_sensor
-            device_class: problem
     notify_services:
       name: Notify actions
       description: >-
@@ -41,32 +44,113 @@ blueprint:
       selector:
         text:
           multiline: true
-    notify_alarm:
-      name: Alarm going off
-      default: true
-      selector:
-        boolean:
-    notify_failed_arm:
-      name: Alarm failed to arm
-      default: true
-      selector:
-        boolean:
-    notify_doors:
-      name: Door forced or left open
-      default: true
-      selector:
-        boolean:
-    notify_faults:
-      name: Controller faults
-      default: true
+    pin_to_arm:
+      name: Arming needs a PIN
+      description: >-
+        Turn on if the integration's "Require a PIN to arm" option is on, so the
+        Arm, Retry and Force arm buttons ask for one. Disarm always asks.
+      default: false
       selector:
         boolean:
 
-mode: queued
-max: 10
+    alarm_section:
+      name: Alarm
+      icon: mdi:alarm-light
+      input:
+        notify_alarm:
+          name: Alarm going off (with Disarm and Silence)
+          default: true
+          selector:
+            boolean:
+        notify_emergency:
+          name: Duress, panic and medical alarms
+          default: true
+          selector:
+            boolean:
+        notify_failed_arm:
+          name: Alarm failed to arm (with Retry and Force arm)
+          default: true
+          selector:
+            boolean:
+
+    bedtime_section:
+      name: Bedtime reminder
+      icon: mdi:weather-night
+      collapsed: true
+      input:
+        bedtime:
+          name: Remind at
+          description: Leave the people empty to turn the reminder off.
+          default: "22:30:00"
+          selector:
+            time:
+        people:
+          name: Everyone who lives here
+          description: The reminder is only sent when all of them are home.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain: person
+
+    doors_section:
+      name: Doors
+      icon: mdi:door
+      collapsed: true
+      input:
+        locks:
+          name: Doors to watch for being left unlocked
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                integration: protege_wx
+                domain: lock
+        unlocked_minutes:
+          name: Left unlocked for
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 120
+              unit_of_measurement: min
+        door_events:
+          name: Door event entities
+          description: The "Events" entity of each door to watch for forced or left open.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                integration: protege_wx
+                domain: event
+
+    faults_section:
+      name: Faults
+      icon: mdi:alert
+      input:
+        notify_faults:
+          name: Controller faults
+          default: true
+          selector:
+            boolean:
+        fault_sensor:
+          name: Alarm fault sensor
+          selector:
+            entity:
+              filter:
+                integration: protege_wx
+                domain: binary_sensor
+                device_class: problem
+
+mode: parallel
+max: 20
 
 trigger_variables:
   alarm_panel: !input alarm_panel
+  people: !input people
 
 triggers:
   - trigger: state
@@ -74,8 +158,20 @@ triggers:
     to: triggered
     id: alarm
   - trigger: event
+    event_type: protege_wx_emergency
+    id: emergency
+  - trigger: event
     event_type: protege_wx_failed_to_arm
     id: failed_to_arm
+  - trigger: time
+    at: !input bedtime
+    id: bedtime
+  - trigger: state
+    entity_id: !input locks
+    to: unlocked
+    for:
+      minutes: !input unlocked_minutes
+    id: unlocked
   - trigger: state
     entity_id: !input door_events
     not_from:
@@ -92,29 +188,68 @@ variables:
   services_text: !input notify_services
   services: >-
     {{ services_text.split('\n') | map('trim') | reject('equalto', '') | list }}
+  pin_to_arm: !input pin_to_arm
   want_alarm: !input notify_alarm
+  want_emergency: !input notify_emergency
   want_failed: !input notify_failed_arm
-  want_doors: !input notify_doors
   want_faults: !input notify_faults
-  area_name: >-
-    {{ state_attr(alarm_panel, 'friendly_name') }}
+  area_name: "{{ state_attr(alarm_panel, 'friendly_name') }}"
   door_type: >-
     {{ trigger.to_state.attributes.event_type if trigger.id == 'door' and trigger.to_state else '' }}
+  # Unique per run, so a button press answers this notification only.
+  run_id: "{{ (now().timestamp() * 1000000) | int }}"
+  tag: "protege_{{ trigger.id }}_{{ run_id }}"
+  act_disarm: "PWX_DISARM_{{ run_id }}"
+  act_silence: "PWX_SILENCE_{{ run_id }}"
+  act_retry: "PWX_RETRY_{{ run_id }}"
+  act_force: "PWX_FORCE_{{ run_id }}"
+  act_arm_home: "PWX_ARMHOME_{{ run_id }}"
+  act_lock: "PWX_LOCK_{{ run_id }}"
+  title: >-
+    {% if trigger.id in ['alarm', 'emergency'] %}ALARM{% elif trigger.id == 'fault' %}Alarm fault{% else %}Alarm{% endif %}
   message: >-
     {% if trigger.id == 'alarm' %}
-      {{ area_name }} is going off.
+      {{ area_name }} is going off{% set cause = states(alarm_panel | replace('alarm_control_panel.', 'sensor.') ~ '_alarm_cause') %}{% if cause not in ['none', 'unknown', 'unavailable'] %}: {{ cause }}{% endif %}.
+    {% elif trigger.id == 'emergency' %}
+      {{ trigger.event.data.type | capitalize }} alarm{% if trigger.event.data.area %} in {{ trigger.event.data.area }}{% endif %}{% if trigger.event.data.by %} ({{ trigger.event.data.by }}){% endif %}. Check everyone is safe.
     {% elif trigger.id == 'failed_to_arm' %}
-      {{ trigger.event.data.area }} didn't arm{% if trigger.event.data.zones %}: {{ trigger.event.data.zones | join(', ') }} open{% endif %}.
+      {{ trigger.event.data.area }} didn't arm{% if trigger.event.data.zones %}: {{ trigger.event.data.zones | join(', ') }} {{ 'is' if trigger.event.data.zones | count == 1 else 'are' }} open{% endif %}.
+    {% elif trigger.id == 'bedtime' %}
+      Everyone's home and the alarm is off. Arm it for the night?
+    {% elif trigger.id == 'unlocked' %}
+      {{ trigger.to_state.name }} has been unlocked for {{ (trigger.for.total_seconds() // 60) | int }} minutes.
     {% elif trigger.id == 'door' %}
       {{ trigger.to_state.name | replace(' Events', '') }} was {{ door_type | replace('_', ' ') }}.
     {% elif trigger.id == 'fault' %}
-      Alarm fault: {{ (state_attr(trigger.entity_id, 'active') or ['unknown']) | join(', ') }}.
+      {{ (state_attr(trigger.entity_id, 'active') or ['Something needs attention']) | join(', ') }}.
     {% endif %}
+  # Buttons that need a PIN open a text box on the phone.
+  buttons: >-
+    {% set pin = {'behavior': 'textInput', 'textInputButtonTitle': 'OK', 'textInputPlaceholder': 'PIN'} %}
+    {% set arm_pin = pin if pin_to_arm else {} %}
+    {% if trigger.id == 'alarm' %}
+      {{ [dict({'action': act_disarm, 'title': 'Disarm', 'destructive': true}.items() | list + pin.items() | list),
+          {'action': act_silence, 'title': 'Silence'}] }}
+    {% elif trigger.id == 'failed_to_arm' %}
+      {{ [dict({'action': act_retry, 'title': 'Retry when closed'}.items() | list + arm_pin.items() | list),
+          dict({'action': act_force, 'title': 'Force arm', 'destructive': true}.items() | list + arm_pin.items() | list)] }}
+    {% elif trigger.id == 'bedtime' %}
+      {{ [dict({'action': act_arm_home, 'title': 'Arm home'}.items() | list + arm_pin.items() | list)] }}
+    {% elif trigger.id == 'unlocked' %}
+      {{ [{'action': act_lock, 'title': 'Lock'}] }}
+    {% else %}
+      {{ [] }}
+    {% endif %}
+  level: >-
+    {{ 'critical' if trigger.id in ['alarm', 'emergency'] else 'passive' if trigger.id == 'bedtime' else 'time-sensitive' }}
   wanted: >-
     {{ (trigger.id == 'alarm' and want_alarm)
-       or (trigger.id == 'failed_to_arm' and want_failed
-           and trigger.event.data.area == area_name)
-       or (trigger.id == 'door' and want_doors and door_type in ['forced_open', 'left_open'])
+       or (trigger.id == 'emergency' and want_emergency)
+       or (trigger.id == 'failed_to_arm' and want_failed and trigger.event.data.area == area_name)
+       or (trigger.id == 'bedtime' and people | count > 0 and is_state(alarm_panel, 'disarmed')
+           and people | select('is_state', 'home') | list | count == people | count)
+       or trigger.id == 'unlocked'
+       or (trigger.id == 'door' and door_type in ['forced_open', 'left_open'])
        or (trigger.id == 'fault' and want_faults) }}
 
 conditions:
@@ -128,10 +263,90 @@ actions:
         - action: "{{ repeat.item }}"
           continue_on_error: true
           data:
-            title: Alarm
+            title: "{{ title | trim }}"
             message: "{{ message | trim }}"
             data:
+              tag: "{{ tag }}"
+              actions: "{{ buttons }}"
               push:
-                interruption-level: "{{ 'critical' if trigger.id == 'alarm' else 'time-sensitive' }}"
+                interruption-level: "{{ level }}"
               ttl: 0
               priority: high
+
+  - if:
+      - condition: template
+        value_template: "{{ buttons | count > 0 }}"
+    then:
+      - wait_for_trigger:
+          - trigger: event
+            event_type: mobile_app_notification_action
+            event_data:
+              action: "{{ act_disarm }}"
+          - trigger: event
+            event_type: mobile_app_notification_action
+            event_data:
+              action: "{{ act_silence }}"
+          - trigger: event
+            event_type: mobile_app_notification_action
+            event_data:
+              action: "{{ act_retry }}"
+          - trigger: event
+            event_type: mobile_app_notification_action
+            event_data:
+              action: "{{ act_force }}"
+          - trigger: event
+            event_type: mobile_app_notification_action
+            event_data:
+              action: "{{ act_arm_home }}"
+          - trigger: event
+            event_type: mobile_app_notification_action
+            event_data:
+              action: "{{ act_lock }}"
+        timeout:
+          minutes: 30
+        continue_on_timeout: false
+      - variables:
+          pressed: "{{ wait.trigger.event.data.action }}"
+          pin: "{{ wait.trigger.event.data.reply_text | default('') }}"
+          pin_data: "{{ {'code': pin} if pin else {} }}"
+      - choose:
+          - conditions: "{{ pressed == act_disarm }}"
+            sequence:
+              - action: alarm_control_panel.alarm_disarm
+                target:
+                  entity_id: "{{ alarm_panel }}"
+                data: "{{ pin_data }}"
+          - conditions: "{{ pressed == act_silence }}"
+            sequence:
+              - action: button.press
+                target:
+                  entity_id: "{{ alarm_panel | replace('alarm_control_panel.', 'button.') ~ '_silence_siren' }}"
+          - conditions: "{{ pressed == act_force }}"
+            sequence:
+              - action: protege_wx.arm
+                target:
+                  entity_id: "{{ alarm_panel }}"
+                data: >-
+                  {{ {'mode': 'away', 'force': true, 'code': pin} if pin else {'mode': 'away', 'force': true} }}
+          - conditions: "{{ pressed == act_retry }}"
+            sequence:
+              - wait_template: >-
+                  {{ is_state(alarm_panel, 'disarmed') and not state_attr(alarm_panel, 'open_zones') }}
+                timeout:
+                  hours: 1
+                continue_on_timeout: false
+              - action: alarm_control_panel.alarm_arm_away
+                target:
+                  entity_id: "{{ alarm_panel }}"
+                data: "{{ pin_data }}"
+          - conditions: "{{ pressed == act_arm_home }}"
+            sequence:
+              - action: alarm_control_panel.alarm_arm_home
+                target:
+                  entity_id: "{{ alarm_panel }}"
+                data: "{{ pin_data }}"
+          - conditions: "{{ pressed == act_lock }}"
+            sequence:
+              - action: lock.lock
+                target:
+                  entity_id: "{{ trigger.entity_id }}"

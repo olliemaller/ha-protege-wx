@@ -240,6 +240,7 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
 
     async def _arm_now(self, mode: str, force: bool) -> None:
         started = time.monotonic()
+        self.coordinator.arm_attempts[self.rec_id] = (mode, started)
         await self._send(self.coordinator.client.arm_area(self.rec_id, mode, force=force))
         result, zones = await self.coordinator.async_check_arm_result(
             self.rec_id, started, stay=mode == "stay"

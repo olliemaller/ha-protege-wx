@@ -44,8 +44,14 @@ def fast_retries(monkeypatch):
 
 
 @pytest.fixture
-async def controller(socket_enabled):
+async def controller(hass, socket_enabled):
+    from homeassistant.util import dt as dt_util
+
     fake = FakeController()
+    # The controller's clock agrees with Home Assistant's (in its time zone).
+    fake.state.events.clear()
+    fake.clock = dt_util.now().replace(tzinfo=None, microsecond=0)
+    fake.log("Area Alarm Disarmed By Home Assistant")
     server = TestServer(fake.app, host="127.0.0.1")
     await server.start_server()
     fake.host = f"127.0.0.1:{server.port}"
@@ -796,8 +802,9 @@ async def test_failed_arm_logbook_names_zones(hass: HomeAssistant, controller) -
     entry = _entry(controller)
     await _setup(hass, entry)
     logged = async_capture_events(hass, EVENT_LOGBOOK)
-    controller.state.events.append("Sun 25/10/2026 19:30:00 Input Living Opened")
-    controller.state.events.append("Sun 25/10/2026 19:30:00 Area Alarm Failure To ARM By User Jane Citizen")
+    stamp = f"Sun {controller.clock:%d/%m/%Y %H:%M:%S}"
+    controller.state.events.append(f"{stamp} Input Living Opened")
+    controller.state.events.append(f"{stamp} Area Alarm Failure To ARM By User Jane Citizen")
     await _refresh(hass, entry)
     assert ("Alarm", "failed to arm by Jane Citizen: Living is open") in [
         (e.data["name"], e.data["message"]) for e in logged
@@ -1530,3 +1537,182 @@ async def test_user_flow_can_carry_on_without_permissions(hass: HomeAssistant, c
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
+
+
+async def test_alarm_card_is_served(hass: HomeAssistant, controller, hass_client) -> None:
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "http", {})
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    client = await hass_client()
+    response = await client.get("/protege_wx/protege-alarm-card.js")
+    assert response.status == 200
+    assert "protege-alarm-card" in await response.text()
+
+
+# ── 0.3.0: notifications blueprint ─────────────────────────────────────────
+
+
+async def _blueprint(hass: HomeAssistant, **inputs) -> list:
+    import shutil
+    from pathlib import Path
+
+    from homeassistant.core import ServiceCall
+    from homeassistant.setup import async_setup_component
+
+    source = Path(__file__).parent.parent / "blueprints/automation/protege_wx/protege_wx_notifications.yaml"
+    target = Path(hass.config.path("blueprints/automation/protege_wx"))
+    await hass.async_add_executor_job(lambda: target.mkdir(parents=True, exist_ok=True))
+    await hass.async_add_executor_job(shutil.copy, source, target / source.name)
+    sent: list[dict] = []
+
+    async def notify(call: ServiceCall) -> None:
+        sent.append(dict(call.data))
+
+    hass.services.async_register("notify", "phone", notify)
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {
+            "automation": {
+                "id": "protege_notify",
+                "use_blueprint": {
+                    "path": "protege_wx/protege_wx_notifications.yaml",
+                    "input": {
+                        "alarm_panel": ALARM,
+                        "notify_services": "notify.phone",
+                        "fault_sensor": "binary_sensor.protege_wx_controller_alarm_fault",
+                        **inputs,
+                    },
+                },
+            }
+        },
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get("automation.automation_0").state == "on"  # valid and running
+    return sent
+
+
+async def _stop_automation(hass: HomeAssistant) -> None:
+    """Stop runs still waiting for a button, so no timers linger."""
+    await hass.services.async_call(
+        "automation", "turn_off", {"entity_id": "automation.automation_0"}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+
+async def _settle(hass: HomeAssistant) -> None:
+    """Let things run without async_block_till_done, which would wait for the
+    automation's 30-minute wait for a button press."""
+    import asyncio
+
+    for _ in range(40):
+        await asyncio.sleep(0.01)
+
+
+async def _bp_refresh(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    await entry.runtime_data.coordinator.async_refresh()
+    await _settle(hass)
+
+
+async def _press(hass: HomeAssistant, action: str, reply: str | None = None) -> None:
+    data = {"action": action}
+    if reply is not None:
+        data["reply_text"] = reply
+    hass.bus.async_fire("mobile_app_notification_action", data)
+    await _settle(hass)
+
+
+async def test_blueprint_alarm_disarm_with_pin(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, users=[make_user("Jane", "4321")])
+    await _setup(hass, entry)
+    sent = await _blueprint(hass)
+    controller.state.areas[16] = [128, 128, 9, 0]  # armed, alarm
+    await _bp_refresh(hass, entry)
+    assert sent and sent[-1]["title"] == "ALARM"
+    actions = sent[-1]["data"]["actions"]
+    assert [a["title"] for a in actions] == ["Disarm", "Silence"]
+    assert actions[0]["behavior"] == "textInput"
+    assert sent[-1]["data"]["push"]["interruption-level"] == "critical"
+    await _press(hass, actions[0]["action"], reply="4321")
+    assert _area_commands(controller)[-1] == 0
+    await _stop_automation(hass)
+
+
+async def test_blueprint_failed_arm_force(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sent = await _blueprint(hass)
+    controller.open_input(5)
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM}, blocking=True)
+    await _settle(hass)
+    message = next(m for m in sent if "didn't arm" in m["message"])
+    assert message["message"] == "Alarm didn't arm: Up Passage is open."
+    titles = [a["title"] for a in message["data"]["actions"]]
+    assert titles == ["Retry when closed", "Force arm"]
+    await _press(hass, message["data"]["actions"][1]["action"])
+    assert _area_commands(controller)[-1] == 4  # force arm
+    assert _state(hass, ALARM) == "armed_away"
+    await _stop_automation(hass)
+
+
+async def test_blueprint_emergency_and_unlocked(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sent = await _blueprint(hass, locks=["lock.front_door"], unlocked_minutes=10)
+    controller.log("User Jane Citizen Duress Front Door")
+    await _bp_refresh(hass, entry)
+    emergency = next(m for m in sent if "Duress" in m["message"])
+    assert emergency["data"]["push"]["interruption-level"] == "critical"
+
+    await hass.services.async_call("lock", "unlock", {"entity_id": "lock.front_door"}, blocking=True)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=11))
+    await _settle(hass)
+    reminder = next(m for m in sent if "unlocked for" in m["message"])
+    assert reminder["message"] == "Front Door has been unlocked for 10 minutes."
+    await _press(hass, reminder["data"]["actions"][0]["action"])
+    assert _door_commands(controller)[-1] == 0
+    await _stop_automation(hass)
+
+
+
+async def test_late_logbook_lines_say_when(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from custom_components.protege_wx.const import EVENT_LOGBOOK
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    logged = async_capture_events(hass, EVENT_LOGBOOK)
+    late = controller.clock - timedelta(minutes=5)
+    controller.state.events.append(f"Sun {late:%d/%m/%Y %H:%M:%S} Door Gate Locked By Home Assistant")
+    await _refresh(hass, entry)
+    assert logged and logged[-1].data["message"] == f"locked by Home Assistant (at {late:%H:%M})"
+
+
+async def test_failed_stay_arm_names_only_stay_zones(hass: HomeAssistant, controller) -> None:
+    import time
+
+    from custom_components.protege_wx.wxapi.events import (
+        KIND_AREA,
+        ParsedEvent,
+        ProtegeEvent,
+    )
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.open_input(3)  # Living: not armed in stay
+    controller.open_input(5)  # Up Passage: armed in stay
+    await _refresh(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    failure = ParsedEvent(ProtegeEvent(None, "Area Alarm Failure To ARM By Home Assistant"), KIND_AREA, "Alarm", "failed_to_arm")
+    assert coordinator.zones_behind_failure(failure, []) == ["Living", "Up Passage"]
+    coordinator.arm_attempts[16] = ("stay", time.monotonic())
+    assert coordinator.zones_behind_failure(failure, []) == ["Up Passage"]

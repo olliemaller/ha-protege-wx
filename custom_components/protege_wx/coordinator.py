@@ -387,6 +387,8 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self._event_listeners: list[Callable[[ParsedEvent], None]] = []
         # Who used Home Assistant to control an area: area id -> (name, time).
         self.ha_actor: dict[int, tuple[str, float]] = {}
+        # Per area: the mode Home Assistant last asked to arm in, and when.
+        self.arm_attempts: dict[int, tuple[str, float]] = {}
         self.events_supported = True
         self.pin_guard = PinGuard()
         self.codes = UserCodes(dict(entry.options))
@@ -765,6 +767,12 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         if described is None:
             return
         name, message = described
+        # Lines read late (after an outage) say when they really happened.
+        when = self.controller_time_utc(parsed.event.time)
+        if when is not None and (dt_util.utcnow() - when).total_seconds() > 90:
+            local = dt_util.as_local(when)
+            stamp = local.strftime("%H:%M") if local.date() == dt_util.now().date() else local.strftime("%d %b %H:%M")
+            message = f"{message} (at {stamp})"
         self.hass.bus.async_fire(
             EVENT_LOGBOOK,
             {"name": name, "message": message, "entity_id": self._event_entity_id(parsed)},
@@ -874,7 +882,12 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         if same_time:
             return same_time
         area = self.site.area_by_name(failure.subject or "")
-        return self.open_zones(area.id, state) if area else []
+        if area is None:
+            return []
+        # A stay arm only checks the zones armed in stay mode.
+        attempt = self.arm_attempts.get(area.id)
+        stay = bool(attempt and attempt[0] == "stay" and time.monotonic() - attempt[1] < 60)
+        return self.open_zones(area.id, state, stay=stay)
 
     def _failed_to_arm(self, failure: ParsedEvent, zones: list[str]) -> None:
         self.recent_failures.append((time.monotonic(), failure.subject or "", zones))

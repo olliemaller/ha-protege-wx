@@ -43,10 +43,14 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 
 | Feature | What it does |
 |---|---|
-| **Alarm panel** | Arm Away, Home (stay) and Night (instant), and disarm. Correct modes in Apple Home, even during the exit delay. |
+| **Alarm panel** | Arm Away, Home (stay), Night (you choose what it does) and Holidays, and disarm. Correct modes in Apple Home, even during the exit delay. |
+| **Alarm card** | A keypad card with the exit/entry countdown, open zones, what set the alarm off and recent activity. Ships with the integration. |
+| **Ask Assist** | "Is the house armed?", "Can I arm?", "Who came in last?" |
 | **Fast** | Updates about every second, driven by the controller's event log. |
 | **Who did it** | Shows which keypad user, card, PIN or Home Assistant user armed, disarmed or opened a door. |
-| **Doors** | Timed unlock, hold open, and access granted or denied events. |
+| **Doors** | Timed unlock, hold open, visitor unlock (re-locks itself), forced and left-open sensors, and who came in last. |
+| **Emergencies** | Duress, panic and medical alarms raise a critical alert that stays until you mark it handled. |
+| **Alarmo** | Optional two-way sync with an Alarmo alarm. |
 | **Won't arm? Know why** | A failed arm names the zones that stopped it, and can send you a notification. |
 | **PINs** | Named users with their own PINs and arm/disarm permissions, for wall tablets and keypad cards. |
 | **Health** | Trouble inputs, a single "Alarm fault" sensor, supply voltage, a connection sensor, and Repairs alerts when something's wrong. |
@@ -58,7 +62,9 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 <img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/mobile.png" alt="Mobile dashboard" width="260" align="right">
 
 ### Areas
-- **Alarm control panel** with Away, Home (stay), Night (instant) and Disarm.
+- **Alarm control panel** with Away, Home (stay), Night, Holidays and Disarm.
+  - **Night** arms instantly (no entry delay) by default. Per area you can make it a stay arm instead, or turn it off.
+  - **Holidays** arms away and shows as *Armed vacation*, for automations that treat a trip differently.
   - During the exit delay it shows the mode being armed, so Apple Home shows Home and Away correctly. An option switches this to "Arming".
   - *Pending* during the entry delay. *Triggered* only while an alarm or siren is actually active, not just held in alarm memory.
 - **`changed_by`**: the keypad user, card or Home Assistant user, read from the controller's event log.
@@ -68,6 +74,9 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
   - optionally, a notification.
 - **Ready to arm** sensors for away and for stay. Stay-type zones are ignored for stay. The open zones are listed as an attribute.
 - **Open zones** sensor: how many zones are open right now, with their names. Handy for a "Can I arm?" tile or asking a voice assistant.
+- **Delay ends** sensor: when the exit or entry delay runs out, so dashboards can count down. Delays are read from the controller, or set in the options.
+- **Alarm cause** sensor: the zone that set the alarm off, kept until the area is disarmed.
+- **Walk test** switch: zones chime as you test them instead of setting off the alarm.
 - **Buttons:** Force arm away, Force arm night and Silence siren.
 - **Events entity:** armed, arming started or cancelled, failed to arm, disarmed and alarm, each with who did it.
 
@@ -75,10 +84,13 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 - **Lock.** Unlocking releases the door for its programmed time.
 - **Hold open** switch, which latches the door unlocked until switched off.
 - **Events entity:** access granted or denied (with the user and whether a card or PIN was used), unlocked, locked, opened, closed, forced open and left open.
-- **Door open/closed sensor**, when the door has a door-position input.
+- **Visitor unlock**: a button and an action that hold the door unlocked for 15 minutes (or as long as you choose), then lock it. Locking it sooner cancels it, and it still locks after a restart.
+- **Forced open** and **Left open** sensors, and a **door open/closed** sensor, when the door has a door-position input.
+- **Last seen** sensor per person who badges in: when, at which door, and card or PIN. Created the first time each person is seen.
 
 ### Inputs (zones)
 - **Motion, door, window, smoke, moisture** and other types, chosen per input. A tamper or short reads as *on*, so a damaged sensor never looks quiet.
+- **Last triggered** sensor: when the zone last opened, kept across restarts.
 - **Tamper** sensor (diagnostic).
 - **Bypass** selector: not bypassed, until disarmed, or permanent.
 
@@ -96,13 +108,15 @@ Activity shows what happened in plain English, linked to the right area or door:
 - *Alarm* failed to arm by Jane Citizen: Living is open
 - *Gate* unlocked by Front Door
 
-Zone openings aren't repeated here, because each zone's own sensor already logs them.
+Zone openings aren't repeated here, because each zone's own sensor already logs them. Lines read late, for example after a network outage, end with the time they really happened.
 
 ### Repairs
 **Settings → Repairs** tells you when something needs attention. Each alert clears itself once the problem is gone:
 - the controller has been **unreachable for 15 minutes**;
 - the **supply voltage** has been under 12.0 V for 5 minutes (usually a mains failure with the battery running down);
-- the operator **can't read the event log**, so "who did it" and failed-arm reasons won't work.
+- the operator **can't read the event log**, so "who did it" and failed-arm reasons won't work;
+- the controller's **clock is more than 2 minutes out** (set it in the Protege web interface, or turn on its time server);
+- a **duress, panic or medical alarm**: a critical alert, a persistent notification and a `protege_wx_emergency` event. This one stays until you mark it handled.
 
 ### Outputs
 - Choose any outputs (PGMs) to add as switches, and pulse them for a set time with an action.
@@ -136,8 +150,8 @@ Tested on one controller so far. Please [open an issue](https://github.com/ollie
 
 ### Manual
 
-1. Download the [latest release](https://github.com/olliemaller/ha-protege-wx/releases/latest).
-2. Copy `custom_components/protege_wx` into your `config/custom_components/` folder.
+1. Download `protege_wx.zip` from the [latest release](https://github.com/olliemaller/ha-protege-wx/releases/latest).
+2. Unzip it into `config/custom_components/protege_wx/`.
 3. Restart Home Assistant.
 
 ## Setup
@@ -161,11 +175,13 @@ Go to **Settings → Devices & services → Add integration → ICT Protege WX**
 - **Host:** the web interface address and port, for example `192.168.1.10:7377`. Pasting a full `http://…` address works too.
 - **Operator username and password.** The password is never sent to the controller; login is a challenge/response.
 
+Setup checks what the operator can see. If something's hidden (the event log, record details, doors), it tells you what that costs, so you can fix the role and re-check, or carry on.
+
 Areas, doors, inputs, trouble inputs and outputs are discovered with their names from the controller.
 
 ### 3. Options
 
-**Settings → Devices & services → ICT Protege WX → Configure** has three sections:
+**Settings → Devices & services → ICT Protege WX → Configure** has five sections:
 
 - **Settings:**
   - update interval (default 1 s)
@@ -173,8 +189,11 @@ Areas, doors, inputs, trouble inputs and outputs are discovered with their names
   - notifications for failed arms
   - whether a PIN is needed to arm
   - outputs to add as switches
+  - visitor unlock time (default 15 minutes)
+- **Alarm areas:** per area, what Night arms as (instant, stay or off), and the exit and entry delays.
 - **Input types:** motion, door, window, smoke and so on, per input.
 - **Users and PINs:** add, edit or remove users and choose whether each can arm and disarm. Only a salted hash of each PIN is stored. These users are separate from the controller's own keypad users.
+- **Alarmo sync:** see below.
 
 ## Apple Home (HomeKit Bridge)
 
@@ -194,7 +213,41 @@ Diagnostic and configuration entities, including *Hold open*, are left out of th
 
 Add users and PINs in the options. Any keypad-style alarm card then works: the built-in **Alarm panel** card, or custom cards. You need a valid PIN to disarm, and to arm unless you turn that off. The user's name shows as `changed_by`.
 
-Already using **[Alarmo](https://github.com/nielsfaber/alarmo)**? Keep Alarmo as your keypad and logic layer, and mirror its state to the Protege area with a simple automation. For most homes, the Protege panel and PINs on their own are enough.
+Already using **[Alarmo](https://github.com/nielsfaber/alarmo)**? Turn on **Alarmo sync** in the options and pick the Alarmo alarm and the Protege area. Arming or disarming either one does the same to the other:
+
+- the controller has the final say. If it refuses to arm because a zone is open, Alarmo is disarmed again, so the two never disagree about whether the house is protected;
+- arming from a Protege keypad arms Alarmo straight away, skipping Alarmo's own exit delay;
+- if Alarmo asks for a code from automations, save it in the sync options.
+
+For most homes, the Protege panel and PINs on their own are enough.
+
+## Alarm card
+
+<img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/alarm-card.png" alt="Alarm card: disarmed with open zones, exit delay countdown, and an alarm" width="100%">
+
+The integration adds a dashboard card. There's nothing to download or add to resources:
+
+```yaml
+type: custom:protege-alarm-card
+entity: alarm_control_panel.alarm
+# optional
+name: House
+show_keypad: true     # when a PIN is needed
+show_activity: true   # recent arming, disarming and doors
+activity_count: 5
+```
+
+It finds the area's open-zones, delay and alarm-cause sensors by itself, and follows your light or dark theme.
+
+## Voice (Assist)
+
+Ask Assist, in English:
+
+| Ask | Answer |
+|---|---|
+| "Is the house armed?" | "The Alarm is armed home." |
+| "Can I arm?" | "Not yet: Living and Kitchen are open, but you can arm it in home mode." |
+| "Who came in last?" | "Jane, at 6:42 pm at the Front Door." |
 
 ## Actions
 
@@ -202,6 +255,7 @@ Already using **[Alarmo](https://github.com/nielsfaber/alarmo)**? Keep Alarmo as
 |---|---|---|
 | `protege_wx.arm` | alarm panel | Arm in `away`, `stay` or `instant` mode, optionally with `force` and a `code` |
 | `protege_wx.unlock_door` | lock | Timed unlock, or `hold_open: true` to latch |
+| `protege_wx.visitor_unlock` | lock | Hold unlocked for `minutes` (default from the options), then lock |
 | `protege_wx.bypass` | zone sensor | `none`, `temporary` (until disarmed) or `permanent` |
 | `protege_wx.pulse_output` | output switch | On for `seconds`, timed by the controller |
 
@@ -221,6 +275,7 @@ data:
 |---|---|
 | `protege_wx_event` | Every meaningful event-log line: `kind`, `subject`, `type`, `by`, `user`, `method` |
 | `protege_wx_failed_to_arm` | An arm attempt fails. Includes `area` and the `zones` that stopped it |
+| `protege_wx_emergency` | A duress, panic or medical alarm: `type`, `area`, `by`, `text` |
 
 The area, door and controller **event entities** carry the same information for the automation editor.
 
@@ -245,9 +300,13 @@ actions:
 
 [![Import the blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Folliemaller%2Fha-protege-wx%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fprotege_wx%2Fprotege_wx_notifications.yaml)
 
-One automation that sends push notifications for:
-- the alarm going off;
-- a failed arm, with the zones that stopped it;
+One automation that sends phone notifications, with buttons that act on them (needs the Companion app):
+
+- the alarm going off, with **Disarm** (type your PIN in the notification) and **Silence**;
+- duress, panic and medical alarms, as critical alerts;
+- a failed arm with the zones that stopped it, with **Retry when closed** and **Force arm**;
+- a **bedtime reminder** when everyone's home and the alarm is off, with **Arm home**;
+- a door **left unlocked** for 10 minutes, with **Lock**;
 - a door forced or left open;
 - controller faults.
 

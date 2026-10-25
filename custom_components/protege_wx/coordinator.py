@@ -338,8 +338,9 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         )
         self._poll_outputs = bool(entry.options.get(OPT_OUTPUTS))
         self._notify_failed_arm = entry.options.get(OPT_NOTIFY_FAILED_ARM, True)
-        self._last_full = 0.0
-        self._last_health = 0.0
+        # None = never read, so the first poll always reads everything.
+        self._last_full: float | None = None
+        self._last_health: float | None = None
         self._seen: set[tuple] = set()
         self._seen_order: deque[tuple] = deque()
         self._events_primed = False
@@ -497,7 +498,8 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 event_seq=previous.event_seq,
             )
             if (
-                now - self._last_full >= FULL_REFRESH_SECONDS
+                self._last_full is None
+                or now - self._last_full >= FULL_REFRESH_SECONDS
                 or fresh_kinds & _FULL_REFRESH_KINDS
                 or not previous.doors
             ):
@@ -506,7 +508,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 if self._poll_outputs:
                     state.outputs = await self.client.output_status()
                 self._last_full = now
-            if now - self._last_health >= HEALTH_REFRESH_SECONDS:
+            if self._last_health is None or now - self._last_health >= HEALTH_REFRESH_SECONDS:
                 try:
                     state.health = await self.client.health_values()
                     state.health_troubles = await self.client.health_troubles()

@@ -1,14 +1,22 @@
 {
   "domain": "protege_wx",
   "name": "ICT Protege WX",
-  "codeowners": ["@olliemaller"],
+  "categories": [
+    "security_safety.alarm_systems",
+    "security_safety.locks_access"
+  ],
+  "codeowners": [
+    "@olliemaller"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/olliemaller/ha-protege-wx",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/olliemaller/ha-protege-wx/issues",
-  "loggers": ["custom_components.protege_wx"],
+  "loggers": [
+    "custom_components.protege_wx"
+  ],
   "requirements": [],
   "version": "0.2.0"
 }

@@ -195,3 +195,11 @@ async def async_remove_config_entry_device(
     for kind, ids in (("area", site.areas), ("door", site.doors), ("input", site.inputs)):
         current |= {object_identifier(coordinator, kind, rec_id) for rec_id in ids}
     return not (device.identifiers & current)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> None:
+    """Delete what's stored for the entry (people's last-seen history)."""
+    from homeassistant.helpers.storage import Store
+
+    hass.data.get(DOMAIN, {}).pop(("people", entry.entry_id), None)
+    await Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.people").async_remove()

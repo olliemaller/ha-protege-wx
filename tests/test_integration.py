@@ -1041,3 +1041,218 @@ async def test_connection_attributes_not_recorded(hass: HomeAssistant, controlle
     from custom_components.protege_wx.sensor import ProtegeConnection
 
     assert {"last_success", "response_time_ms"} <= ProtegeConnection._unrecorded_attributes
+
+
+# ── 0.3.0: alarm modes, emergencies, cause, countdown, clock ───────────────
+
+
+def _area_commands(controller) -> list[int]:
+    return [
+        int(dict(p.split("=", 1) for p in c.split("&") if "=" in p)["Command"])
+        for c in controller.state.commands
+        if "SubType=GXT_AREAS_TBL" in c
+    ]
+
+
+async def test_night_mapped_to_stay_and_vacation(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, night_mode={"16": "stay"})
+    await _setup(hass, entry)
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_night", {"entity_id": ALARM}, blocking=True)
+    assert _area_commands(controller)[-1] == 10  # stay arm
+    assert _state(hass, ALARM) == "armed_night"
+    await _refresh(hass, entry)
+    assert _state(hass, ALARM) == "armed_night"  # survives polls
+    assert hass.states.get("button.alarm_force_arm_night") is None  # can't force a stay arm
+    await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARM}, blocking=True)
+    assert _state(hass, ALARM) == "disarmed"
+
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_vacation", {"entity_id": ALARM}, blocking=True)
+    assert _area_commands(controller)[-1] == 3  # away arm
+    assert _state(hass, ALARM) == "armed_vacation"
+    await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARM}, blocking=True)
+    # A keypad arm afterwards shows as plain Away, not Vacation.
+    controller.state.areas[16] = [128, 128, 8, 0]
+    await _refresh(hass, entry)
+    assert _state(hass, ALARM) == "armed_away"
+
+
+async def test_night_off_hides_night(hass: HomeAssistant, controller) -> None:
+    from homeassistant.components.alarm_control_panel import (
+        AlarmControlPanelEntityFeature,
+    )
+
+    entry = _entry(controller, night_mode={"16": "off"})
+    await _setup(hass, entry)
+    features = hass.states.get(ALARM).attributes["supported_features"]
+    assert not features & AlarmControlPanelEntityFeature.ARM_NIGHT
+    assert features & AlarmControlPanelEntityFeature.ARM_VACATION
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            "alarm_control_panel", "alarm_arm_night", {"entity_id": ALARM}, blocking=True
+        )
+    assert err.value.translation_key in ("night_off", "service_not_supported")  # HA checks first
+
+
+async def test_emergency_alert(hass: HomeAssistant, controller) -> None:
+    from homeassistant.components.repairs import DOMAIN as REPAIRS_DOMAIN
+    from homeassistant.helpers import issue_registry as ir
+    from homeassistant.setup import async_setup_component
+
+    from custom_components.protege_wx.const import EVENT_EMERGENCY, EVENT_LOGBOOK
+
+    assert await async_setup_component(hass, REPAIRS_DOMAIN, {})
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    alerts = async_capture_events(hass, EVENT_EMERGENCY)
+    logged = async_capture_events(hass, EVENT_LOGBOOK)
+    controller.log("User Jane Citizen Duress Front Door")
+    await _refresh(hass, entry)
+
+    assert alerts and alerts[0].data["type"] == "duress" and alerts[0].data["by"] == "Jane Citizen"
+    assert ("Protege WX", "duress alarm by Jane Citizen") in [(e.data["name"], e.data["message"]) for e in logged]
+    assert hass.states.get("event.protege_wx_controller_controller_events").attributes["event_type"] == "duress"
+    issue_id = f"emergency_{entry.entry_id}"
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert issue is not None and issue.severity == ir.IssueSeverity.CRITICAL and issue.is_fixable
+    assert issue.translation_placeholders["kind"] == "duress"
+
+    # Acknowledging it in Repairs clears it.
+    from custom_components.protege_wx.repairs import async_create_fix_flow
+
+    flow = await async_create_fix_flow(hass, issue_id, None)
+    flow.hass, flow.issue_id, flow.handler = hass, issue_id, DOMAIN
+    result = await flow.async_step_init()
+    result = await flow.async_step_confirm({})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_alarm_cause(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sensor = "sensor.alarm_alarm_cause"
+    assert _state(hass, sensor) == "none"
+    controller.state.areas[16] = [128, 128, 8, 0]
+    await _refresh(hass, entry)
+    controller.open_input(5)
+    controller.log("Input Up Passage Opened")
+    controller.state.areas[16] = [128, 128, 9, 0]  # alarm
+    await _refresh(hass, entry)
+    assert _state(hass, ALARM) == "triggered"
+    assert _state(hass, sensor) == "Up Passage"
+    controller.state.inputs[5][0] = 0
+    await _refresh(hass, entry)
+    assert _state(hass, sensor) == "Up Passage"  # kept until disarmed
+    controller.state.areas[16] = [128, 0, 0, 0]
+    await _refresh(hass, entry)
+    assert _state(hass, sensor) == "none"
+
+
+async def test_delay_countdown(hass: HomeAssistant, controller) -> None:
+    from homeassistant.util import dt as dt_util
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sensor = "sensor.alarm_delay_ends"
+    assert _state(hass, sensor) == "unknown"
+    assert hass.states.get(sensor).attributes["exit_delay"] == 60  # read from the controller
+    assert hass.states.get(sensor).attributes["entry_delay"] == 45
+    controller.state.areas[16] = [128, 129, 0, 0]
+    await _refresh(hass, entry)
+    state = hass.states.get(sensor)
+    ends = dt_util.parse_datetime(state.state)
+    assert 55 <= (ends - dt_util.utcnow()).total_seconds() <= 61
+    assert state.attributes["phase"] == "exit"
+    await _refresh(hass, entry)
+    assert hass.states.get(sensor).state == state.state  # doesn't restart each poll
+    controller.state.areas[16] = [128, 130, 0, 0]
+    await _refresh(hass, entry)
+    ends = dt_util.parse_datetime(_state(hass, sensor))
+    assert 40 <= (ends - dt_util.utcnow()).total_seconds() <= 46
+    controller.state.areas[16] = [128, 0, 0, 0]
+    await _refresh(hass, entry)
+    assert _state(hass, sensor) == "unknown"
+
+
+async def test_delays_from_options_override(hass: HomeAssistant, controller) -> None:
+    controller.exit_delay = controller.entry_delay = 0  # not reported
+    entry = _entry(controller, delays={"16": {"exit": 90, "entry": 20}})
+    await _setup(hass, entry)
+    attributes = hass.states.get("sensor.alarm_delay_ends").attributes
+    assert attributes["exit_delay"] == 90 and attributes["entry_delay"] == 20
+
+
+async def test_zone_last_triggered(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sensor = "sensor.living_last_triggered"
+    assert _state(hass, sensor) == "unknown"
+    controller.open_input(3)
+    await _refresh(hass, entry)
+    first = _state(hass, sensor)
+    assert first != "unknown"
+    await _refresh(hass, entry)
+    assert _state(hass, sensor) == first  # still open: same trigger
+
+
+async def test_person_last_seen(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.log("User Jane Citizen Entry Granted Front Door Using User By Pin")
+    await _refresh(hass, entry)
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id("sensor", DOMAIN, "A1B2C3D4_person_0_jane_citizen")
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state.state != "unknown"
+    assert state.attributes["door"] == "Front Door" and state.attributes["method"] == "pin"
+    assert "Jane Citizen" in state.attributes["friendly_name"]
+
+    # Remembered across a reload.
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).attributes["door"] == "Front Door"
+
+
+async def test_clock_drift_issue(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from homeassistant.helpers import issue_registry as ir
+    from homeassistant.util import dt as dt_util
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    issue_id = f"clock_drift_{entry.entry_id}"
+    registry = ir.async_get(hass)
+    for _ in range(3):
+        controller.clock = dt_util.now().replace(tzinfo=None) - timedelta(minutes=5)
+        controller.log("Area Alarm Disarmed By Home Assistant")
+        await _refresh(hass, entry)
+    issue = registry.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_placeholders == {"minutes": "5", "direction": "behind"}
+    for _ in range(5):
+        controller.clock = dt_util.now().replace(tzinfo=None)
+        controller.log("Area Alarm Disarmed By Home Assistant")
+        await _refresh(hass, entry)
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_options_flow_areas(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert "areas" in result["menu_options"]
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "areas"})
+    assert result["type"] is FlowResultType.FORM
+    keys = [str(k) for k in result["data_schema"].schema]
+    assert keys == ["Alarm: Night arms as", "Alarm: exit delay", "Alarm: entry delay"]  # System Area has no zones
+    defaults = {str(k): k.default() for k in result["data_schema"].schema}
+    assert defaults["Alarm: exit delay"] == 60 and defaults["Alarm: entry delay"] == 45
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"Alarm: Night arms as": "stay", "Alarm: exit delay": 30, "Alarm: entry delay": 45},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options["night_mode"] == {"16": "stay"}
+    assert entry.options["delays"] == {"16": {"exit": 30, "entry": 45}}

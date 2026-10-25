@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import statistics
 import time
 from collections import deque
 from collections.abc import Callable
@@ -29,14 +30,18 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    DEFAULT_ENTRY_DELAY,
+    DEFAULT_EXIT_DELAY,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    EVENT_EMERGENCY,
     EVENT_FAILED_TO_ARM,
     EVENT_HISTORY,
     EVENT_LOG,
     EVENT_LOGBOOK,
     FULL_REFRESH_SECONDS,
     HEALTH_REFRESH_SECONDS,
+    OPT_DELAYS,
     OPT_NOTIFY_FAILED_ARM,
     OPT_OUTPUTS,
     OPT_SCAN_INTERVAL,
@@ -67,6 +72,7 @@ from .wxapi.events import (
     KIND_ACCESS,
     KIND_AREA,
     KIND_DOOR,
+    KIND_EMERGENCY,
     KIND_INPUT,
     KIND_NOISE,
     KIND_TROUBLE,
@@ -128,6 +134,11 @@ class AreaInfo:
     stay_enabled: bool = True
     instant_enabled: bool = True
     has_inputs: bool | None = None  # None = unknown (details not readable)
+    exit_delay: int | None = None  # seconds, when the controller says
+    entry_delay: int | None = None
+    # Timing fields from the area's programming, for diagnostics: the field
+    # names vary between firmware versions.
+    timing_fields: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -231,6 +242,22 @@ async def _detail(client: ProtegeClient, table: str, rec_id: int) -> dict[str, s
         return {}
 
 
+# Field names the controller may use for an area's delays (seconds).
+_EXIT_DELAY_FIELDS = ("ExitDelay", "ExitDelayTime", "ExitTime", "AreaExitDelay")
+_ENTRY_DELAY_FIELDS = ("EntryDelay", "EntryDelayTime", "EntryTime", "AreaEntryDelay")
+
+
+def _seconds(detail: dict[str, str], fields: tuple[str, ...]) -> int | None:
+    for field_name in fields:
+        try:
+            value = int(str(detail.get(field_name, "")).strip())
+        except ValueError:
+            continue
+        if 0 < value <= 3600:
+            return value
+    return None
+
+
 async def async_discover(client: ProtegeClient) -> ProtegeSite:
     """Read names and the details that decide which entities make sense.
 
@@ -286,6 +313,12 @@ async def async_discover(client: ProtegeClient) -> ProtegeSite:
             name,
             stay_enabled=_flag(detail.get("EnableStayArming"), True),
             instant_enabled=_flag(detail.get("EnableInstantArming"), True),
+            exit_delay=_seconds(detail, _EXIT_DELAY_FIELDS),
+            entry_delay=_seconds(detail, _ENTRY_DELAY_FIELDS),
+            timing_fields={
+                k: str(v) for k, v in detail.items()
+                if any(word in k.lower() for word in ("delay", "time", "exit", "entry"))
+            },
             has_inputs=(
                 any(rec_id in info.areas for info in inputs.values()) if details_known else None
             ),
@@ -365,6 +398,15 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self._last_page_empty = False
         self._health_read_at: float | None = None  # when health was last read OK
         self.health = entry_health(hass, entry.entry_id)
+        self._delay_options: dict = dict(entry.options.get(OPT_DELAYS, {}))
+        # Per area: the zone that set the alarm off (kept until disarmed), and
+        # when the current exit or entry delay ends.
+        self.alarm_cause: dict[int, str | None] = {}
+        self.delay_ends: dict[int, tuple[str, datetime] | None] = {}
+        # Per input: when it last opened.
+        self.last_triggered: dict[int, datetime] = {}
+        # Controller clock minus Home Assistant's, from fresh event lines (s).
+        self.clock_drift: deque[float] = deque(maxlen=7)
         # Told after every poll, failed or not (the coordinator itself only
         # tells entities about the first of a run of failures).
         self._status_listeners: list[Callable[[], None]] = []
@@ -497,6 +539,12 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 self.history.append(p)  # caught up after an outage: not news
             else:
                 news.append(p)
+        if news and len(fresh) <= 3:
+            # A line read within a poll of happening says how far the
+            # controller's clock is from ours (controller time is local).
+            local_now = dt_util.now().replace(tzinfo=None)
+            self.clock_drift.append((newest - local_now).total_seconds())
+            self.health.check_clock(self.clock_drift)
         return news
 
     async def _async_update_data(self) -> ProtegeState:
@@ -509,6 +557,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         except ConfigEntryAuthFailed:
             self._notify_status()
             raise
+        self._track_changes(self.data, state)
         self._record_success(started, state)
         return state
 
@@ -587,11 +636,102 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
             )
             if zones is not None:
                 self._failed_to_arm(parsed, zones)
+            if parsed.kind == KIND_EMERGENCY:
+                self._emergency(parsed)
             for listener in list(self._event_listeners):
                 try:
                     listener(parsed)
                 except Exception:  # one broken listener mustn't drop the rest
                     _LOGGER.exception("Error handling Protege event %s", parsed.event.text)
+
+    # ── per-poll tracking: alarm cause, delays, zone activity ─────────────
+
+    def area_delay(self, area_id: int, phase: str) -> int:
+        """Exit or entry delay in seconds: the options, else the controller, else a default."""
+        configured = self._delay_options.get(str(area_id), {}).get(phase)
+        if configured:
+            return int(configured)
+        area = self.site.areas.get(area_id)
+        known = (area.exit_delay if phase == "exit" else area.entry_delay) if area else None
+        return known or (DEFAULT_EXIT_DELAY if phase == "exit" else DEFAULT_ENTRY_DELAY)
+
+    def _track_changes(self, previous: ProtegeState | None, state: ProtegeState) -> None:
+        now = dt_util.utcnow()
+        for area_id, status in state.areas.items():
+            if not status.known:
+                continue
+            before = previous.areas.get(area_id) if previous else None
+            # Exit / entry delay countdown.
+            phase = {"exit_delay": "exit", "entry_delay": "entry"}.get(status.state)
+            if phase is None:
+                self.delay_ends[area_id] = None
+            elif before is None or before.state != status.state or not self.delay_ends.get(area_id):
+                self.delay_ends[area_id] = (
+                    phase, now + timedelta(seconds=self.area_delay(area_id, phase))
+                )
+            # What set the alarm off.
+            if status.in_alarm and not (before and before.in_alarm) and self.alarm_cause.get(area_id) is None:
+                self.alarm_cause[area_id] = self._find_cause(area_id, state)
+            elif status.state_code is not None and status.state_code < 128:
+                self.alarm_cause[area_id] = None  # disarmed: the alarm is over
+        for input_id, status in state.inputs.items():
+            before = previous.inputs.get(input_id) if previous else None
+            if status.is_open and before is not None and before.is_open is False:
+                self.last_triggered[input_id] = now
+
+    def controller_time_utc(self, when: datetime | None) -> datetime | None:
+        """A controller timestamp (local, naive) as UTC, corrected for the
+        controller's clock drift once that's known."""
+        if when is None:
+            return None
+        utc = dt_util.as_utc(when.replace(tzinfo=dt_util.get_default_time_zone()))
+        if len(self.clock_drift) >= 3:
+            utc -= timedelta(seconds=statistics.median(self.clock_drift))
+        return utc
+
+    def _find_cause(self, area_id: int, state: ProtegeState) -> str | None:
+        """The zone most likely to have set the alarm off: the last one in the
+        area logged as opening shortly before, else one that's open now."""
+        names = {info.name for info in self._area_inputs(area_id, stay=False)}
+        cutoff = dt_util.utcnow() - timedelta(seconds=90)
+        for parsed in reversed(self.history):
+            if parsed.kind == KIND_INPUT and parsed.subject in names and parsed.event_type in ("opened", "alarm"):
+                when = self.controller_time_utc(parsed.event.time)
+                if when is None or when >= cutoff:
+                    return parsed.subject
+                break
+        recent = [
+            (stamp, self.site.inputs[input_id].name)
+            for input_id, stamp in self.last_triggered.items()
+            if input_id in self.site.inputs and self.site.inputs[input_id].name in names and stamp >= cutoff
+        ]
+        if recent:
+            return max(recent)[1]
+        open_now = self.open_zones(area_id, state)
+        return open_now[0] if open_now else None
+
+    def _emergency(self, parsed: ParsedEvent) -> None:
+        who = self.actor_name(parsed)
+        area = parsed.subject
+        self.hass.bus.async_fire(
+            EVENT_EMERGENCY,
+            {
+                "entry_id": self.config_entry.entry_id,
+                "type": parsed.event_type,
+                "area": area,
+                "by": who,
+                "text": parsed.event.text,
+                "time": parsed.event.time.isoformat() if parsed.event.time else None,
+            },
+        )
+        self.health.raise_emergency(parsed.event_type, area or "", who or "", parsed.event.text)
+        persistent_notification.async_create(
+            self.hass,
+            f"The controller logged a {parsed.event_type} alarm"
+            f"{' in ' + area if area else ''}{' by ' + who if who else ''}: {parsed.event.text}",
+            title="Protege WX emergency",
+            notification_id=f"{DOMAIN}_emergency_{self.config_entry.entry_id}",
+        )
 
     # ── logbook ────────────────────────────────────────────────────────────
 

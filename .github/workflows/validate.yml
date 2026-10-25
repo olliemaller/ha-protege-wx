@@ -41,5 +41,13 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install "${{ matrix.harness }}" ${{ matrix.extra }} ruff
+      - name: Install Assist's requirements (for the voice tests)
+        run: |
+          python - <<'PY' > assist-requirements.txt
+          import json, pathlib, homeassistant
+          manifest = pathlib.Path(homeassistant.__file__).parent / "components/conversation/manifest.json"
+          print("\n".join(json.loads(manifest.read_text())["requirements"]))
+          PY
+          pip install -r assist-requirements.txt
       - run: ruff check --select E,F,W,B,UP,SIM,I --ignore E501,B904,B017 custom_components tests
       - run: pytest -q

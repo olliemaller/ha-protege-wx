@@ -33,6 +33,14 @@
         "data_description": {
           "host": "IP address and port of the controller's web interface. Leave out http://."
         }
+      },
+      "permissions": {
+        "title": "Some things are hidden from this operator",
+        "description": "Logged in, but the operator **{username}** can't see everything this integration uses:\n\n{missing}\n\nIn the Protege web interface, give the operator's role access to these (Users > Roles), then re-check. Or carry on without them; you can fix the role later and reload the integration.",
+        "menu_options": {
+          "recheck": "I've changed it: check again",
+          "continue_anyway": "Carry on without them"
+        }
       }
     },
     "error": {

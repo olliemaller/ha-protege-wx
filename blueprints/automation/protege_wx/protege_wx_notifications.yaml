@@ -205,6 +205,10 @@ variables:
   want_failed: !input notify_failed_arm
   want_faults: !input notify_faults
   area_name: "{{ state_attr(alarm_panel, 'friendly_name') }}"
+  # For a failed arm: the mode Home Assistant tried (away / stay / instant),
+  # or away when it came from a keypad.
+  fail_mode: >-
+    {{ (trigger.event.data.mode or 'away') if trigger.id == 'failed_to_arm' else 'away' }}
   door_type: >-
     {{ trigger.to_state.attributes.event_type if trigger.id == 'door' and trigger.to_state else '' }}
   # Unique per run, so a button press answers this notification only.
@@ -246,8 +250,13 @@ variables:
       {{ [dict({'action': act_disarm, 'title': 'Disarm', 'destructive': true}.items() | list + pin.items() | list),
           {'action': act_silence, 'title': 'Silence'}] }}
     {% elif trigger.id == 'failed_to_arm' %}
-      {{ [dict({'action': act_retry, 'title': 'Retry when closed'}.items() | list + arm_pin.items() | list),
-          dict({'action': act_force, 'title': 'Force arm', 'destructive': true}.items() | list + arm_pin.items() | list)] }}
+      {% set retry = [dict({'action': act_retry, 'title': 'Retry when closed'}.items() | list + arm_pin.items() | list)] %}
+      {% if fail_mode == 'stay' %}
+        {{ retry }}
+      {% else %}
+        {{ retry + [dict({'action': act_force, 'title': 'Force arm night' if fail_mode == 'instant' else 'Force arm away',
+                          'destructive': true}.items() | list + arm_pin.items() | list)] }}
+      {% endif %}
     {% elif trigger.id == 'bedtime' %}
       {{ [dict({'action': act_arm_home, 'title': 'Arm home'}.items() | list + arm_pin.items() | list)] }}
     {% elif trigger.id == 'unlocked' %}
@@ -261,7 +270,9 @@ variables:
     {{ (trigger.id == 'alarm' and want_alarm)
        or (trigger.id == 'entry' and want_entry)
        or (trigger.id == 'emergency' and want_emergency)
-       or (trigger.id == 'failed_to_arm' and want_failed and trigger.event.data.area == area_name)
+       or (trigger.id == 'failed_to_arm' and want_failed
+           and (trigger.event.data.entity_id == alarm_panel if trigger.event.data.entity_id
+                else trigger.event.data.area == area_name))
        or (trigger.id == 'bedtime' and people | count > 0 and is_state(alarm_panel, 'disarmed')
            and people | select('is_state', 'home') | list | count == people | count)
        or trigger.id == 'unlocked'
@@ -343,7 +354,8 @@ actions:
                 target:
                   entity_id: "{{ alarm_panel }}"
                 data: >-
-                  {{ {'mode': 'away', 'force': true, 'code': pin} if pin else {'mode': 'away', 'force': true} }}
+                  {% set force_mode = 'instant' if fail_mode == 'instant' else 'away' %}
+                  {{ {'mode': force_mode, 'force': true, 'code': pin} if pin else {'mode': force_mode, 'force': true} }}
           - conditions: "{{ pressed == act_retry }}"
             sequence:
               - wait_template: >-
@@ -351,10 +363,11 @@ actions:
                 timeout:
                   hours: 1
                 continue_on_timeout: false
-              - action: alarm_control_panel.alarm_arm_away
+              - action: protege_wx.arm
                 target:
                   entity_id: "{{ alarm_panel }}"
-                data: "{{ pin_data }}"
+                data: >-
+                  {{ {'mode': fail_mode, 'code': pin} if pin else {'mode': fail_mode} }}
           - conditions: "{{ pressed == act_arm_home }}"
             sequence:
               - action: alarm_control_panel.alarm_arm_home

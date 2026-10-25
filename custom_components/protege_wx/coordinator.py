@@ -206,6 +206,8 @@ class ProtegeState:
     health: dict[str, str] = field(default_factory=dict)
     health_troubles: list[str] = field(default_factory=list)
     event_seq: int = 0  # increases whenever new events arrive
+    # Number of the poll that last read door status (see polls_started).
+    doors_poll_id: int = 0
 
 
 def _valid_id(value: str | None) -> int | None:
@@ -378,6 +380,9 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self._notify_failed_arm = entry.options.get(OPT_NOTIFY_FAILED_ARM, True)
         # None = never read, so the first poll always reads everything.
         self._last_full: float | None = None
+        # Polls are numbered so a caller can tell a fresh door reading from
+        # one that was already under way when it sent a command.
+        self.polls_started = 0
         self._last_health: float | None = None
         self._seen: set[tuple] = set()
         self._seen_order: deque[tuple] = deque()
@@ -537,7 +542,11 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         newest = max(times)
         news = []
         for p in meaningful:
-            if p.event.time and (newest - p.event.time).total_seconds() > _STALE_SECONDS:
+            if (
+                p.kind != KIND_EMERGENCY  # an emergency is always news, however late
+                and p.event.time
+                and (newest - p.event.time).total_seconds() > _STALE_SECONDS
+            ):
                 self.history.append(p)  # caught up after an outage: not news
             else:
                 news.append(p)
@@ -566,6 +575,8 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
     async def _async_poll(self) -> ProtegeState:
         previous = self.data or ProtegeState()
         now = time.monotonic()
+        self.polls_started += 1
+        poll_id = self.polls_started
         try:
             fresh = await self._read_events()
             fresh_kinds = {self.parser.parse(event).kind for _, event in fresh}
@@ -578,6 +589,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 health=previous.health,
                 health_troubles=previous.health_troubles,
                 event_seq=previous.event_seq,
+                doors_poll_id=previous.doors_poll_id,
             )
             if (
                 self._last_full is None
@@ -586,6 +598,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 or not previous.doors
             ):
                 state.doors = await self.client.door_status()
+                state.doors_poll_id = poll_id
                 state.trouble_inputs = await self.client.trouble_input_status()
                 if self._poll_outputs:
                     state.outputs = await self.client.output_status()
@@ -651,8 +664,8 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
     def area_delay(self, area_id: int, phase: str) -> int:
         """Exit or entry delay in seconds: the options, else the controller, else a default."""
         configured = self._delay_options.get(str(area_id), {}).get(phase)
-        if configured:
-            return int(configured)
+        if configured is not None:
+            return int(configured)  # 0 is a valid (instant) delay
         area = self.site.areas.get(area_id)
         known = (area.exit_delay if phase == "exit" else area.entry_delay) if area else None
         return known or (DEFAULT_EXIT_DELAY if phase == "exit" else DEFAULT_ENTRY_DELAY)
@@ -891,10 +904,18 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
 
     def _failed_to_arm(self, failure: ParsedEvent, zones: list[str]) -> None:
         self.recent_failures.append((time.monotonic(), failure.subject or "", zones))
+        area = self.site.area_by_name(failure.subject or "")
+        attempt = self.arm_attempts.get(area.id) if area else None
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        panel = runtime.areas.get(area.id) if runtime is not None and area else None
         self.hass.bus.async_fire(
             EVENT_FAILED_TO_ARM,
             {
                 "entry_id": self.config_entry.entry_id,
+                "entity_id": panel.entity_id if panel else None,
+                # The controller mode Home Assistant asked for (away / stay /
+                # instant), or None when the arm came from a keypad.
+                "mode": attempt[0] if attempt and time.monotonic() - attempt[1] < 60 else None,
                 "area": failure.subject,
                 "by": failure.by,
                 "zones": zones,

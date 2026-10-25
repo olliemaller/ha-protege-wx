@@ -2,6 +2,7 @@
 chosen in the options."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -80,13 +81,20 @@ class ProtegeHoldOpenSwitch(ProtegeEntity, SwitchEntity):
         status = self._status
         return None if status is None else status.is_latched
 
+    def _cancel_visitor(self) -> None:
+        visitors = self.coordinator.config_entry.runtime_data.visitors
+        if visitors:
+            visitors.cancel(self.rec_id)
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._command(self.coordinator.client.unlock_door(self.rec_id, latched=True))
+        self._cancel_visitor()  # held open on purpose: no visitor relock
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         # Only undo our own latch; don't lock a door a schedule has unlocked.
         if self.is_on:
             await self._command(self.coordinator.client.lock_door(self.rec_id))
+            self._cancel_visitor()
 
     async def async_service_pulse(self, seconds: int) -> None:
         raise ServiceValidationError(
@@ -156,10 +164,14 @@ class ProtegeWalkTestSwitch(ProtegeEntity, SwitchEntity):
 
     @callback
     def _on_event(self, parsed: ParsedEvent) -> None:
-        text = parsed.event.text.lower()
-        if parsed.kind != KIND_AREA or parsed.subject != self._area_name or "walk test" not in text:
+        if parsed.kind != KIND_AREA or parsed.subject != self._area_name:
             return
-        on = not any(word in text for word in ("end", "stop", "finish", "cancel", "off"))
+        # Only the action, not the area's or the user's name ("Office").
+        action = str((parsed.extra or {}).get("action", "")).lower()
+        if "walk test" not in action:
+            return
+        words = set(re.findall(r"[a-z]+", action))
+        on = not words & {"end", "ended", "ends", "stop", "stopped", "finish", "finished", "cancel", "cancelled", "off", "disabled"}
         if on != self._attr_is_on:
             self._attr_is_on = on
             self.async_write_ha_state()

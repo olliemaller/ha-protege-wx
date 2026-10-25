@@ -140,12 +140,13 @@
       },
       "alarmo": {
         "title": "Alarmo sync",
-        "description": "Keep an Alarmo alarm in step with a Protege area, both ways: arm or disarm either one and the other follows. The controller has the final say: if it refuses to arm (a zone is open), Alarmo is disarmed again.\n\nLeave the alarm empty to turn the sync off. Alarmo code saved: {code_set}.",
+        "description": "Keep an Alarmo alarm in step with a Protege area. The controller has the final say: if it refuses to arm (a zone is open), Alarmo is disarmed again, and after a restart Alarmo is set to match the controller.\n\n**Both ways** lets anyone who can arm or disarm Alarmo do the same to the real alarm, using Alarmo's codes rather than the PINs set up here. Make sure Alarmo asks for a code to disarm, or choose **Protege to Alarmo only**.\n\nLeave the alarm empty to turn the sync off. Alarmo code saved: {code_set}.",
         "data": {
           "alarmo_entity": "Alarmo alarm",
           "alarmo_area": "Protege area",
           "alarmo_code": "Alarmo code",
-          "clear_code": "Forget the saved Alarmo code"
+          "clear_code": "Forget the saved Alarmo code",
+          "alarmo_direction": "Direction"
         },
         "data_description": {
           "alarmo_entity": "The alarm made by Alarmo.",
@@ -189,6 +190,12 @@
         "instant": "Instant arm (no entry delay)",
         "stay": "Stay arm (like Home)",
         "off": "Off (hide Night)"
+      }
+    },
+    "alarmo_direction": {
+      "options": {
+        "both": "Both ways",
+        "to_alarmo": "Protege to Alarmo only"
       }
     }
   },

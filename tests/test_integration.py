@@ -1207,7 +1207,11 @@ async def test_person_last_seen(hass: HomeAssistant, controller) -> None:
     controller.log("User Jane Citizen Entry Granted Front Door Using User By Pin")
     await _refresh(hass, entry)
     registry = er.async_get(hass)
-    entity_id = registry.async_get_entity_id("sensor", DOMAIN, "A1B2C3D4_person_0_jane_citizen")
+    from custom_components.protege_wx.sensor import person_slug
+
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"A1B2C3D4_person_0_{person_slug('Jane Citizen')}"
+    )
     assert entity_id is not None
     state = hass.states.get(entity_id)
     assert state.state != "unknown"
@@ -1262,7 +1266,7 @@ async def test_options_flow_areas(hass: HomeAssistant, controller) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.options["night_mode"] == {"16": "stay"}
-    assert entry.options["delays"] == {"16": {"exit": 30, "entry": 45}}
+    assert entry.options["delays"] == {"16": {"exit": 30}}  # entry matches the controller
 
 
 # ── 0.3.0: doors ───────────────────────────────────────────────────────────
@@ -1655,7 +1659,7 @@ async def test_blueprint_failed_arm_force(hass: HomeAssistant, controller) -> No
     message = next(m for m in sent if "didn't arm" in m["message"])
     assert message["message"] == "Alarm didn't arm: Up Passage is open."
     titles = [a["title"] for a in message["data"]["actions"]]
-    assert titles == ["Retry when closed", "Force arm"]
+    assert titles == ["Retry when closed", "Force arm away"]
     await _press(hass, message["data"]["actions"][1]["action"])
     assert _area_commands(controller)[-1] == 4  # force arm
     assert _state(hass, ALARM) == "armed_away"
@@ -1720,3 +1724,152 @@ async def test_failed_stay_arm_names_only_stay_zones(hass: HomeAssistant, contro
     assert coordinator.zones_behind_failure(failure, []) == ["Living", "Up Passage"]
     coordinator.arm_attempts[16] = ("stay", time.monotonic())
     assert coordinator.zones_behind_failure(failure, []) == ["Up Passage"]
+
+
+
+# ── 0.3.0 review regressions ──────────────────────────────────────────────
+
+
+def test_person_slugs_stay_apart() -> None:
+    from custom_components.protege_wx.sensor import person_slug
+
+    assert person_slug("J Smith") != person_slug("J. Smith")
+
+
+def test_emergency_words_in_names_are_not_emergencies() -> None:
+    from custom_components.protege_wx.wxapi.events import EventParser, ProtegeEvent
+
+    parser = EventParser(["Alarm", "Panic Room"], ["Front Door"], ["Living"], [])
+
+    def parse(text):
+        return parser.parse(ProtegeEvent(None, text))
+
+    assert parse("Area Panic Room Armed By User Bob").kind == "area"
+    assert parse("Area Alarm Disarmed By User Medical Centre").event_type == "disarmed"
+    assert parse("User Medical Centre Entry Granted Front Door Using User By Pin").kind == "access"
+    duress = parse("User Jane Citizen Duress Front Door")
+    assert (duress.kind, duress.event_type, duress.by) == ("emergency", "duress", "Jane Citizen")
+    assert parse("Area Alarm Panic Alarm By User Jane").subject == "Alarm"
+
+
+async def test_late_emergency_still_alerts(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from custom_components.protege_wx.const import EVENT_EMERGENCY
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    alerts = async_capture_events(hass, EVENT_EMERGENCY)
+    early = controller.clock - timedelta(minutes=5)
+    controller.state.events.append(f"Sun {early:%d/%m/%Y %H:%M:%S} User Jane Citizen Duress Front Door")
+    controller.log("Area Alarm Disarmed By Home Assistant")  # newer line: the duress is "caught up"
+    await _refresh(hass, entry)
+    assert alerts and alerts[0].data["type"] == "duress"
+
+
+async def test_visitor_unlock_survives_a_stale_poll(hass: HomeAssistant, controller) -> None:
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    stale = replace(coordinator.data)  # door status from before the unlock
+    await hass.services.async_call(
+        DOMAIN, "visitor_unlock", {"entity_id": "lock.front_door", "minutes": 1}, blocking=True
+    )
+    coordinator.async_set_updated_data(stale)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.visitors.until.get(0) is not None
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=1, seconds=5))
+    await hass.async_block_till_done()
+    assert _door_commands(controller) == [2, 0]
+
+
+async def test_failed_lock_keeps_the_visitor_relock(hass: HomeAssistant, controller, monkeypatch) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    await hass.services.async_call(DOMAIN, "visitor_unlock", {"entity_id": "lock.front_door"}, blocking=True)
+    client = entry.runtime_data.client
+
+    async def broken(_door):
+        from custom_components.protege_wx.wxapi import ProtegeConnectionError
+
+        raise ProtegeConnectionError("busy")
+
+    monkeypatch.setattr(client, "lock_door", broken)
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call("lock", "lock", {"entity_id": "lock.front_door"}, blocking=True)
+    assert entry.runtime_data.visitors.until.get(0) is not None
+
+
+async def test_hold_open_cancels_visitor_relock(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    await hass.services.async_call(DOMAIN, "visitor_unlock", {"entity_id": "lock.front_door"}, blocking=True)
+    await hass.services.async_call(
+        DOMAIN, "unlock_door", {"entity_id": "lock.front_door", "hold_open": True}, blocking=True
+    )
+    assert entry.runtime_data.visitors.until.get(0) is None
+
+
+async def test_walk_test_ignores_area_names(hass: HomeAssistant, controller) -> None:
+    controller.state.names["GXT_AREAS_TBL"][16] = "Office"
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    switch = "switch.office_walk_test"
+    controller.log("Area Office Walk Test Started By User Jane")
+    await _refresh(hass, entry)
+    assert _state(hass, switch) == "on"
+
+
+async def test_night_mode_survives_restart(hass: HomeAssistant, controller) -> None:
+    from homeassistant.core import State
+    from pytest_homeassistant_custom_component.common import mock_restore_cache
+
+    mock_restore_cache(hass, [State(ALARM, "armed_night")])
+    controller.state.areas[16] = [128, 128, 64, 0]  # stay armed
+    entry = _entry(controller, night_mode={"16": "stay"})
+    await _setup(hass, entry)
+    assert _state(hass, ALARM) == "armed_night"
+
+
+async def test_alarmo_restore_does_not_disarm_the_house(hass: HomeAssistant, controller) -> None:
+    await _alarmo(hass)
+    hass.states.async_set(ALARMO, "unavailable")  # Alarmo not loaded yet
+    controller.state.areas[16] = [128, 128, 8, 0]  # armed at the keypad while HA was down
+    entry = _entry(controller, alarmo_entity=ALARMO, alarmo_area=16)
+    await _setup(hass, entry)
+    hass.states.async_set(ALARMO, "disarmed")  # Alarmo restores its old state
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "armed_away"
+    assert 0 not in _area_commands(controller)
+    assert _state(hass, ALARMO) == "armed_away"  # brought into line with the controller
+
+
+async def test_alarmo_rearm_inside_echo_window(hass: HomeAssistant, controller) -> None:
+    await _alarmo(hass)
+    entry = _entry(controller, alarmo_entity=ALARMO, alarmo_area=16)
+    await _setup(hass, entry)
+    controller.state.areas[16] = [128, 128, 8, 0]  # keypad arm -> Alarmo armed
+    await _refresh(hass, entry)
+    assert _state(hass, ALARMO) == "armed_away"
+    await hass.services.async_call("alarm_control_panel", "alarm_disarm", {"entity_id": ALARMO}, blocking=True)
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "disarmed"
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARMO}, blocking=True)
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "armed_away"
+
+
+async def test_alarmo_one_way(hass: HomeAssistant, controller) -> None:
+    await _alarmo(hass)
+    entry = _entry(controller, alarmo_entity=ALARMO, alarmo_area=16, alarmo_direction="to_alarmo")
+    await _setup(hass, entry)
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARMO}, blocking=True)
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "disarmed"
+    assert 3 not in _area_commands(controller)

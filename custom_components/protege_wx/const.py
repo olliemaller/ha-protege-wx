@@ -30,6 +30,8 @@ DEFAULT_VISITOR_MINUTES: Final = 15
 OPT_ALARMO_ENTITY: Final = "alarmo_entity"
 OPT_ALARMO_AREA: Final = "alarmo_area"
 OPT_ALARMO_CODE: Final = "alarmo_code"
+OPT_ALARMO_DIRECTION: Final = "alarmo_direction"
+ALARMO_DIRECTIONS: Final = ("both", "to_alarmo")
 
 NIGHT_MODES: Final = ("instant", "stay", "off")
 DEFAULT_EXIT_DELAY: Final = 60

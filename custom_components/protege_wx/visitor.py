@@ -41,6 +41,12 @@ class VisitorUnlocks:
         self.until: dict[int, datetime] = {}
         self._timers: dict[int, CALLBACK_TYPE] = {}
         self._latched: dict[int, bool | None] = {}
+        # Door -> number of the last poll started before the unlock command
+        # finished. Door readings from that poll or earlier are stale.
+        self._after: dict[int, int] = {}
+        # Newest door reading handled, so an older poll finishing late can't
+        # undo it.
+        self._seen_poll = 0
         self._remove_listener: CALLBACK_TYPE | None = None
 
     async def async_start(self) -> None:
@@ -55,24 +61,28 @@ class VisitorUnlocks:
             self._schedule(door_id, when)
         for door_id, status in self.coordinator.data.doors.items():
             self._latched[door_id] = status.is_latched
+        self._seen_poll = self.coordinator.data.doors_poll_id
         self._remove_listener = self.coordinator.async_add_listener(self._on_update)
 
-    @callback
-    def async_stop(self) -> None:
-        """Stop the timers (on unload). What's saved is kept for the restart."""
+    async def async_stop(self) -> None:
+        """Stop the timers (on unload) and save now, so a reload or restart
+        straight after an unlock still knows to lock the door."""
         if self._remove_listener:
             self._remove_listener()
             self._remove_listener = None
         for cancel in self._timers.values():
             cancel()
         self._timers.clear()
+        await self._store.async_save(self._data())
 
     async def async_unlock(self, door_id: int, minutes: int) -> None:
         """Latch the door open now and lock it again after ``minutes``."""
         await self.coordinator.client.unlock_door(door_id, latched=True)
         when = dt_util.utcnow() + timedelta(minutes=minutes)
         self.until[door_id] = when
-        self._latched[door_id] = True  # don't mistake the next poll for a manual lock
+        # Readings already under way say "not latched": wait for a fresh one.
+        self._after[door_id] = self.coordinator.polls_started
+        self._latched[door_id] = None
         self._schedule(door_id, when)
         self._save()
 
@@ -90,10 +100,10 @@ class VisitorUnlocks:
 
         async def _relock(_now: datetime) -> None:
             self._timers.pop(door_id, None)
-            status = self.coordinator.data.doors.get(door_id)
             try:
-                # Still latched (or unknown): lock it. A door that's already
-                # locked again is left alone.
+                # Read the door now rather than trust the last poll. Still
+                # latched (or unknown): lock it. Already locked: leave it.
+                status = (await self.coordinator.client.door_status()).get(door_id)
                 if status is None or status.is_latched is not False:
                     await self.coordinator.client.lock_door(door_id)
             except Exception:  # noqa: BLE001 - try again shortly
@@ -110,7 +120,15 @@ class VisitorUnlocks:
 
     @callback
     def _on_update(self) -> None:
-        for door_id, status in self.coordinator.data.doors.items():
+        data = self.coordinator.data
+        if data.doors_poll_id <= self._seen_poll:
+            return  # no new door reading (or an older one finishing late)
+        self._seen_poll = data.doors_poll_id
+        for door_id, status in data.doors.items():
+            if door_id in self._after:
+                if data.doors_poll_id <= self._after[door_id]:
+                    continue  # read before the unlock took effect
+                del self._after[door_id]
             latched = status.is_latched
             if door_id in self.until and self._latched.get(door_id) is True and latched is False:
                 # Locked by someone else before the time was up.
@@ -121,7 +139,8 @@ class VisitorUnlocks:
             if latched is not None:
                 self._latched[door_id] = latched
 
+    def _data(self) -> dict[str, Any]:
+        return {"doors": {str(k): v.isoformat() for k, v in self.until.items()}}
+
     def _save(self) -> None:
-        self._store.async_delay_save(
-            lambda: {"doors": {str(k): v.isoformat() for k, v in self.until.items()}}, 1
-        )
+        self._store.async_delay_save(self._data, 1)

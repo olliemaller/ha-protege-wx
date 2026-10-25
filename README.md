@@ -40,7 +40,7 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 
 ## Highlights
 
-| | |
+| Feature | What it does |
 |---|---|
 | 🛡️ **Alarm panel** | Arm Away, Home (stay) and Night (instant), and disarm. Correct modes in Apple Home, even during the exit delay. |
 | ⚡ **Fast** | Updates about every second, driven by the controller's event log. |

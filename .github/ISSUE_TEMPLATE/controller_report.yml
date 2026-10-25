@@ -1,0 +1,17 @@
+name: Controller compatibility report
+description: Tell us whether it worked on your controller
+labels: [compatibility]
+body:
+  - type: input
+    id: web
+    attributes: {label: Web interface and firmware version}
+    validations: {required: true}
+  - type: dropdown
+    id: result
+    attributes:
+      label: Did it work?
+      options: ["Yes, everything", "Partly", "No"]
+    validations: {required: true}
+  - type: textarea
+    id: notes
+    attributes: {label: Notes}

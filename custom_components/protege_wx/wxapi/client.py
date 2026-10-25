@@ -73,6 +73,8 @@ AREA_ARM_AWAY = 3
 AREA_ARM_FORCE = 4
 AREA_ARM_INSTANT = 5
 AREA_ARM_FORCE_INSTANT = 6
+AREA_WALK_TEST_ON = 7
+AREA_WALK_TEST_OFF = 8
 AREA_SILENCE = 9
 AREA_ARM_STAY = 10
 DOOR_LOCK = 0
@@ -529,6 +531,10 @@ class ProtegeClient:
 
     async def disarm_area(self, area_id: int) -> None:
         await self.control(TBL_AREAS, area_id, AREA_DISARM)
+
+    async def walk_test(self, area_id: int, on: bool) -> None:
+        """Start or end a walk test (zones chime instead of alarming)."""
+        await self.control(TBL_AREAS, area_id, AREA_WALK_TEST_ON if on else AREA_WALK_TEST_OFF)
 
     async def silence_area(self, area_id: int) -> None:
         await self.control(TBL_AREAS, area_id, AREA_SILENCE)

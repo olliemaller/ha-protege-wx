@@ -240,6 +240,9 @@ class FakeController:
             if cmd == 9:
                 self.state.areas[rec][2] &= ~(1 << 1)
                 return "OK"
+            if cmd in (7, 8):
+                self.log(f"Area {area} Walk Test {'Started' if cmd == 7 else 'Ended'} By Home Assistant")
+                return "OK"
             stay = cmd == 10
             force = cmd in (4, 6)
             open_zones = [

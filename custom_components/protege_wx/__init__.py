@@ -22,7 +22,14 @@ from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
-from .const import CONF_PROTOCOL, DOMAIN, INTEGRATION_AUTHOR
+from .alarmo import AlarmoSync
+from .const import (
+    CONF_PROTOCOL,
+    DOMAIN,
+    INTEGRATION_AUTHOR,
+    OPT_ALARMO_AREA,
+    OPT_ALARMO_ENTITY,
+)
 from .coordinator import ProtegeCoordinator, ProtegeSite, async_discover
 from .entity import controller_device, controller_uid, object_identifier
 from .health import entry_health
@@ -132,6 +139,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
         entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if entry.options.get(OPT_ALARMO_ENTITY) and entry.options.get(OPT_ALARMO_AREA) is not None:
+        sync = AlarmoSync(hass, entry)
+        sync.async_start()
+        entry.async_on_unload(sync.async_stop)
     return True
 
 

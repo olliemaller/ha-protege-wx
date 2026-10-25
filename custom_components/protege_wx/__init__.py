@@ -25,6 +25,7 @@ from homeassistant.helpers import device_registry as dr
 from .const import CONF_PROTOCOL, DOMAIN, INTEGRATION_AUTHOR
 from .coordinator import ProtegeCoordinator, ProtegeSite, async_discover
 from .entity import controller_device, controller_uid, object_identifier
+from .health import entry_health
 from .wxapi import (
     PROTOCOL_AUTO,
     LoginGuard,
@@ -112,6 +113,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
         raise ConfigEntryAuthFailed(str(err)) from err
     except ProtegeError as err:
         await _close()
+        # Counts towards the "unreachable" Repair even across setup retries.
+        entry_health(hass, entry.entry_id).record_failure(client.host)
         raise ConfigEntryNotReady(f"Cannot set up the controller: {err}") from err
     except BaseException:
         await _close()

@@ -934,3 +934,110 @@ async def test_leftover_issue_cleared_after_restart(hass: HomeAssistant, control
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+# ── review fixes ───────────────────────────────────────────────────────────
+
+
+async def test_unreachable_counts_across_setup_retries(hass: HomeAssistant, controller) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    from custom_components.protege_wx.health import entry_health
+
+    controller.offline = True
+    entry = _entry(controller)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    health = entry_health(hass, entry.entry_id)
+    first = health.failing_since
+    assert first is not None
+    # A later retry (a new coordinator each time) keeps the original start.
+    health.record_failure(controller.host, first + 16 * 60)
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"controller_unreachable_{entry.entry_id}")
+    assert issue is not None and issue.is_persistent
+
+
+async def test_connection_sensor_follows_repeated_failures(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sensor = "sensor.protege_wx_controller_connection"
+    controller.offline = True
+    await _refresh(hass, entry)
+    assert _state(hass, sensor) == "reconnecting"
+    client = entry.runtime_data.client
+    import time as real_time
+
+    client.guard.backoff_until = real_time.monotonic() + 60  # now backing off
+    await _refresh(hass, entry)  # a second failure in a row
+    assert _state(hass, sensor) == "backing_off"
+
+
+async def test_low_voltage_band_resets_old_dip(hass: HomeAssistant, controller, clock) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    issue_id = f"low_supply_voltage_{entry.entry_id}"
+
+    async def poll_health() -> None:
+        coordinator._last_health = None
+        await _refresh(hass, entry)
+
+    controller.voltage_mv = 11900
+    await poll_health()  # a brief dip
+    controller.voltage_mv = 12300  # float voltage for hours
+    clock.offset += 3 * 60 * 60
+    await poll_health()
+    controller.voltage_mv = 11900  # another dip: should start a fresh 5 minutes
+    await poll_health()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_voltage_ignores_stale_health(hass: HomeAssistant, controller, clock) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    controller.voltage_mv = 11800
+    coordinator._last_health = None
+    await _refresh(hass, entry)  # one low reading
+    clock.offset += 10 * 60  # ten minutes with no fresh health reading
+    coordinator._last_health = coordinator._health_read_at = None
+    controller.offline = True
+    await _refresh(hass, entry)
+    controller.offline = False
+    coordinator._last_health = clock.monotonic()  # health not due this poll
+    await _refresh(hass, entry)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"low_supply_voltage_{entry.entry_id}") is None
+
+
+async def test_low_voltage_message_follows_the_reading(hass: HomeAssistant, controller, clock) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    issue_id = f"low_supply_voltage_{entry.entry_id}"
+
+    async def poll_health() -> None:
+        coordinator._last_health = None
+        await _refresh(hass, entry)
+
+    controller.voltage_mv = 11800
+    await poll_health()
+    clock.offset += 6 * 60
+    await poll_health()
+    controller.voltage_mv = 11200
+    await poll_health()
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert issue.translation_placeholders["volts"] == "11.2"
+
+
+async def test_connection_attributes_not_recorded(hass: HomeAssistant, controller) -> None:
+    from custom_components.protege_wx.sensor import ProtegeConnection
+
+    assert {"last_success", "response_time_ms"} <= ProtegeConnection._unrecorded_attributes

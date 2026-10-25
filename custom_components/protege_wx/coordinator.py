@@ -25,7 +25,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -35,22 +34,15 @@ from .const import (
     EVENT_FAILED_TO_ARM,
     EVENT_HISTORY,
     EVENT_LOG,
-    EVENT_LOG_EMPTY_SECONDS,
     EVENT_LOGBOOK,
     FULL_REFRESH_SECONDS,
     HEALTH_REFRESH_SECONDS,
-    ISSUE_EVENT_LOG,
-    ISSUE_LOW_VOLTAGE,
-    ISSUE_UNREACHABLE,
-    LOW_VOLTAGE,
-    LOW_VOLTAGE_CLEAR,
-    LOW_VOLTAGE_SECONDS,
     OPT_NOTIFY_FAILED_ARM,
     OPT_OUTPUTS,
     OPT_SCAN_INTERVAL,
-    UNREACHABLE_ISSUE_SECONDS,
 )
 from .describe import describe
+from .health import entry_health
 from .users import UserCodes
 from .wxapi import (
     NO_RECORD,
@@ -370,14 +362,12 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         # Connection health, for the connection sensor and Repairs.
         self.last_success: datetime | None = None
         self.response_times: deque[float] = deque(maxlen=30)  # seconds per poll
-        self._failing_since: float | None = None
-        self._low_voltage_since: float | None = None
-        self._events_empty_since: float | None = None
         self._last_page_empty = False
-        # Issues raised by this run, and ones that may be left from a previous
-        # run (Repairs persist across restarts) until a poll shows they're over.
-        self._issues: set[str] = set()
-        self._stale_issues: set[str] = {ISSUE_UNREACHABLE, ISSUE_LOW_VOLTAGE, ISSUE_EVENT_LOG}
+        self._health_read_at: float | None = None  # when health was last read OK
+        self.health = entry_health(hass, entry.entry_id)
+        # Told after every poll, failed or not (the coordinator itself only
+        # tells entities about the first of a run of failures).
+        self._status_listeners: list[Callable[[], None]] = []
 
     # ── event listeners ────────────────────────────────────────────────────
 
@@ -514,7 +504,10 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         try:
             state = await self._async_poll()
         except UpdateFailed:
-            self._record_failure(started)
+            self._record_failure()
+            raise
+        except ConfigEntryAuthFailed:
+            self._notify_status()
             raise
         self._record_success(started, state)
         return state
@@ -550,6 +543,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 try:
                     state.health = await self.client.health_values()
                     state.health_troubles = await self.client.health_troubles()
+                    self._health_read_at = now
                 except ProtegeAuthError:
                     raise
                 except ProtegeError as err:
@@ -653,89 +647,49 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         now = time.monotonic()
         return sum(1 for t in self.client.guard.login_times if now - t <= LOGIN_WINDOW)
 
-    def _record_failure(self, started: float) -> None:
-        now = time.monotonic()
-        if self._failing_since is None:
-            self._failing_since = started
-        if now - self._failing_since >= UNREACHABLE_ISSUE_SECONDS:
-            self._raise_issue(
-                ISSUE_UNREACHABLE,
-                ir.IssueSeverity.ERROR,
-                {"host": self.client.host, "minutes": str(UNREACHABLE_ISSUE_SECONDS // 60)},
-            )
+    @callback
+    def async_add_status_listener(self, listener: Callable[[], None]) -> CALLBACK_TYPE:
+        """Call ``listener`` after every poll, including repeated failures."""
+        self._status_listeners.append(listener)
+
+        @callback
+        def remove() -> None:
+            self._status_listeners.remove(listener)
+
+        return remove
+
+    @callback
+    def _notify_status(self) -> None:
+        for listener in list(self._status_listeners):
+            listener()
+
+    def _record_failure(self) -> None:
+        self.health.record_failure(self.client.host, time.monotonic())
+        self._notify_status()
 
     def _record_success(self, started: float, state: ProtegeState) -> None:
         now = time.monotonic()
         self.response_times.append(now - started)
         self.last_success = dt_util.utcnow()
-        self._failing_since = None
-        self._clear_issue(ISSUE_UNREACHABLE)
-        self._check_voltage(now, state)
-        self._check_event_log(now)
+        self.health.record_success()
+        self.health.check_voltage(self._fresh_voltage(state, now), now)
+        if self.events_supported:
+            self.health.check_event_log(self._last_page_empty, self.client.username, now)
+        self._notify_status()
 
-    def _check_voltage(self, now: float, state: ProtegeState) -> None:
+    def _fresh_voltage(self, state: ProtegeState, now: float) -> float | None:
+        """The supply voltage, only if health was read recently."""
+        if self._health_read_at is None or now - self._health_read_at > 2 * HEALTH_REFRESH_SECONDS:
+            return None
         try:
-            volts = float((state.health.get("NetworkVoltage") or "").strip()) / 1000
+            return float((state.health.get("NetworkVoltage") or "").strip()) / 1000
         except ValueError:
-            return  # not reported (or not readable): leave things as they are
-        if volts >= LOW_VOLTAGE_CLEAR:
-            self._low_voltage_since = None
-            self._clear_issue(ISSUE_LOW_VOLTAGE)
-        elif volts < LOW_VOLTAGE:
-            if self._low_voltage_since is None:
-                self._low_voltage_since = now
-            if now - self._low_voltage_since >= LOW_VOLTAGE_SECONDS:
-                self._raise_issue(
-                    ISSUE_LOW_VOLTAGE,
-                    ir.IssueSeverity.WARNING,
-                    {"volts": f"{volts:.1f}", "threshold": f"{LOW_VOLTAGE:.1f}"},
-                )
-
-    def _check_event_log(self, now: float) -> None:
-        if not self.events_supported:
-            return
-        if not self._last_page_empty:
-            self._events_empty_since = None
-            self._clear_issue(ISSUE_EVENT_LOG)
-            return
-        if self._events_empty_since is None:
-            self._events_empty_since = now
-        if now - self._events_empty_since >= EVENT_LOG_EMPTY_SECONDS:
-            self._raise_issue(
-                ISSUE_EVENT_LOG, ir.IssueSeverity.WARNING, {"operator": self.client.username}
-            )
-
-    def _issue_id(self, issue: str) -> str:
-        return f"{issue}_{self.config_entry.entry_id}"
-
-    def _raise_issue(self, issue: str, severity: ir.IssueSeverity, placeholders: dict[str, str]) -> None:
-        if issue in self._issues:
-            return
-        self._issues.add(issue)
-        self._stale_issues.discard(issue)
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            self._issue_id(issue),
-            is_fixable=False,
-            severity=severity,
-            translation_key=issue,
-            translation_placeholders=placeholders,
-        )
-
-    def _clear_issue(self, issue: str) -> None:
-        if issue in self._issues or issue in self._stale_issues:
-            self._issues.discard(issue)
-            self._stale_issues.discard(issue)
-            ir.async_delete_issue(self.hass, DOMAIN, self._issue_id(issue))
+            return None
 
     @callback
     def async_clear_issues(self) -> None:
         """Remove every issue this entry raised (on unload or removal)."""
-        for issue in (ISSUE_UNREACHABLE, ISSUE_LOW_VOLTAGE, ISSUE_EVENT_LOG):
-            ir.async_delete_issue(self.hass, DOMAIN, self._issue_id(issue))
-        self._issues.clear()
-        self._stale_issues.clear()
+        self.health.clear_all()
 
     # ── arm-failure feedback ───────────────────────────────────────────────
 

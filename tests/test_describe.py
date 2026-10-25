@@ -57,6 +57,12 @@ def test_zone_events_are_left_to_their_sensors():
     assert _describe("Input Living Opened") is None
 
 
+def test_unrecognised_lines_are_left_out():
+    # An input added after setup, or an operator login, isn't logged raw.
+    assert _describe("Input New Shed Opened") is None
+    assert _describe("Operator Home Assistant Logged In") is None
+
+
 def test_join_names():
     assert join_names([]) == ""
     assert join_names(["A"]) == "A"

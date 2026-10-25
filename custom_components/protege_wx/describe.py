@@ -9,8 +9,8 @@ the logbook shows as "<name> <message>", for example::
     Gate           unlocked by Front Door
     Mains Failure  trouble started
 
-Zone (input) events return ``None``: their binary sensors already log every
-open and close, so describing them again would only double the noise.
+Zone (input) events and unrecognised lines return ``None``: zone sensors
+already log every open and close, and raw lines would only add noise.
 """
 from __future__ import annotations
 
@@ -112,12 +112,13 @@ def describe(
             return name, "trouble cleared"
         return name, _fallback(parsed)
 
-    if kind == KIND_SYSTEM:
-        if kind_type == "power_up":
-            return CONTROLLER_NAME, "powered up"
-        return CONTROLLER_NAME, f"logged: {parsed.event.text}"
+    if kind == KIND_SYSTEM and kind_type == "power_up":
+        return CONTROLLER_NAME, "powered up"
 
-    return None  # inputs and anything else are logged by their own entities
+    # Inputs are logged by their own sensors. Anything unrecognised (operator
+    # logins, or areas, doors and inputs added after setup) is left out rather
+    # than flooding the logbook with raw lines; it's still on the event bus.
+    return None
 
 
 def _fallback(parsed: ParsedEvent) -> str:

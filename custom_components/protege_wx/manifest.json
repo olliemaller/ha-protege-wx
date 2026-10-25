@@ -1,10 +1,6 @@
 {
   "domain": "protege_wx",
   "name": "ICT Protege WX",
-  "categories": [
-    "security_safety.alarm_systems",
-    "security_safety.locks_access"
-  ],
   "codeowners": [
     "@olliemaller"
   ],

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/banner.png" alt="Protege WX for Home Assistant" width="100%">
+  <img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/banner.png" alt="Protege WX for Home Assistant" width="100%">
 </p>
 
 <p align="center">
@@ -7,7 +7,7 @@
   <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Release"></a>
   <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=042C53" alt="Checks"></a>
   <img src="https://img.shields.io/badge/Home%20Assistant-2026.2%2B-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=042C53" alt="Home Assistant 2026.2+">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Licence"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Licence"></a>
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
 ---
 
 <p align="center">
-  <img src="images/dashboard.png" alt="Alarm, doors, zones and controller status on a Home Assistant dashboard" width="88%">
+  <img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/dashboard.png" alt="Alarm, doors, zones and controller status on a Home Assistant dashboard" width="88%">
 </p>
 
 ## Why this exists
@@ -35,7 +35,8 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 
 > [!IMPORTANT]
 > **Unofficial.** Not affiliated with or endorsed by Integrated Control Technology. "ICT" and "Protege" are trademarks of their owner, used here only to describe compatibility.
->
+
+> [!WARNING]
 > **It controls a live security system.** Use a dedicated operator with only the permissions Home Assistant needs, and test arming, disarming and door control while you're on site.
 
 ## Highlights
@@ -53,7 +54,7 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 
 ## Features
 
-<img src="images/mobile.png" alt="Mobile dashboard" width="260" align="right">
+<img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/mobile.png" alt="Mobile dashboard" width="260" align="right">
 
 ### Areas
 - **Alarm control panel** with Away, Home (stay), Night (instant) and Disarm.
@@ -94,7 +95,7 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 
 - An ICT Protege WX with its **web interface** turned on. Port 7377 is the usual default.
 - Home Assistant **2026.2** or newer. The integration's own icon shows from **2026.3**.
-- A controller **operator** for Home Assistant (see [Setting up the controller](#1-set-up-the-controller)).
+- A controller **operator** for Home Assistant (see **Setup** below).
 
 Both web protocol versions are supported and **detected automatically**:
 
@@ -273,7 +274,7 @@ Tests run against `tests/fake_controller.py`. It speaks both protocols with the 
 
 ## Built by Arcnode IT
 
-<a href="https://arcnode.com.au"><img src="images/built-by-arcnode.png" width="100%" alt="Built and maintained by Oliver Maller at Arcnode IT in Melbourne. Arcnode IT designs, installs and supports UniFi networks, Apple HomeKit and alarm systems across Melbourne and Victoria."></a>
+<a href="https://arcnode.com.au"><img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/built-by-arcnode.png" width="100%" alt="Built and maintained by Oliver Maller at Arcnode IT in Melbourne. Arcnode IT designs, installs and supports UniFi networks, Apple HomeKit and alarm systems across Melbourne and Victoria."></a>
 
 Found a bug or want a feature? [Open an issue](https://github.com/olliemaller/ha-protege-wx/issues). Want a UniFi network, HomeKit setup or alarm system installed professionally? [Get in touch with Arcnode](https://arcnode.com.au).
 
@@ -284,4 +285,4 @@ Found a bug or want a feature? [Open an issue](https://github.com/olliemaller/ha
 
 ## Licence
 
-[MIT](LICENSE). See also [NOTICE](NOTICE).
+[MIT](https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE). See also [NOTICE](https://github.com/olliemaller/ha-protege-wx/blob/main/NOTICE).

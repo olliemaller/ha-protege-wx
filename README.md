@@ -267,6 +267,16 @@ ruff check custom_components tests
 
 Tests run against `tests/fake_controller.py`. It speaks both protocols with the real cryptography and reproduces a real controller's behaviour and event-log lines, including refusing to arm with a zone open. Pull requests are welcome.
 
+## Built by Arcnode IT
+
+<a href="https://arcnode.com.au"><img src="https://raw.githubusercontent.com/olliemaller/olliemaller/main/assets/avatar.png" width="64" align="left" alt="Oliver Maller" style="margin-right:16px"></a>
+
+This integration is built and maintained by **Oliver Maller** at **[Arcnode IT](https://arcnode.com.au)**, a Melbourne company that designs, installs and supports UniFi networks, Apple HomeKit and alarm systems.
+
+Bugs and feature requests go in [issues](https://github.com/olliemaller/ha-protege-wx/issues). If you'd like a Protege WX, UniFi or HomeKit system installed or integrated professionally in Melbourne or Victoria, [get in touch with Arcnode](https://arcnode.com.au).
+
+<br clear="left">
+
 ## Credits
 
 - Protocol work builds on [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) by Mitchell Johnson (MIT), extended for web interface 2.3.x.

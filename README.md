@@ -6,7 +6,7 @@
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-185FA5?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white&labelColor=042C53" alt="HACS Custom"></a>
   <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Release"></a>
   <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=042C53" alt="Checks"></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2026.2%2B-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=042C53" alt="Home Assistant 2026.2+">
+  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=042C53" alt="Home Assistant 2025.1+">
   <a href="https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Licence"></a>
 </p>
 
@@ -49,7 +49,8 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 | **Doors** | Timed unlock, hold open, and access granted or denied events. |
 | **Won't arm? Know why** | A failed arm names the zones that stopped it, and can send you a notification. |
 | **PINs** | Named users with their own PINs and arm/disarm permissions, for wall tablets and keypad cards. |
-| **Health** | Trouble inputs, a single "Alarm fault" sensor, supply voltage and the last event. |
+| **Health** | Trouble inputs, a single "Alarm fault" sensor, supply voltage, a connection sensor, and Repairs alerts when something's wrong. |
+| **Logbook** | Plain sentences in Activity: "Front Door: access granted to Jane (PIN)", "Alarm: failed to arm, Living is open". |
 | **Local** | Talks only to your controller over your own network. No cloud, and no extra Python packages. |
 
 ## Features
@@ -66,6 +67,7 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
   - a `protege_wx_failed_to_arm` event;
   - optionally, a notification.
 - **Ready to arm** sensors for away and for stay. Stay-type zones are ignored for stay. The open zones are listed as an attribute.
+- **Open zones** sensor: how many zones are open right now, with their names. Handy for a "Can I arm?" tile or asking a voice assistant.
 - **Buttons:** Force arm away, Force arm night and Silence siren.
 - **Events entity:** armed, arming started or cancelled, failed to arm, disarmed and alarm, each with who did it.
 
@@ -84,7 +86,23 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 - **Trouble inputs** such as mains failure, low battery, siren tamper and module offline.
 - **Alarm fault**: one sensor that turns on if anything needs attention.
 - **Supply voltage**, **Last event** and memory use.
+- **Connection** sensor (diagnostic): Connected, Reconnecting, Backing off or Login failed, with the last successful update, protocol, response time and recent logins.
 - **Controller events** entity.
+
+### Logbook
+Activity shows what happened in plain English, linked to the right area or door:
+- *Alarm* armed (home) by Home Assistant
+- *Front Door* access granted to Jane Citizen (PIN)
+- *Alarm* failed to arm by Jane Citizen: Living is open
+- *Gate* unlocked by Front Door
+
+Zone openings aren't repeated here, because each zone's own sensor already logs them.
+
+### Repairs
+**Settings → Repairs** tells you when something needs attention. Each alert clears itself once the problem is gone:
+- the controller has been **unreachable for 15 minutes**;
+- the **supply voltage** has been under 12.0 V for 5 minutes (usually a mains failure with the battery running down);
+- the operator **can't read the event log**, so "who did it" and failed-arm reasons won't work.
 
 ### Outputs
 - Choose any outputs (PGMs) to add as switches, and pulse them for a set time with an action.
@@ -94,7 +112,7 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 ## Requirements
 
 - An ICT Protege WX with its **web interface** turned on. Port 7377 is the usual default.
-- Home Assistant **2026.2** or newer. The integration's own icon shows from **2026.3**.
+- Home Assistant **2025.1** or newer. The integration's own icon shows from **2026.3**.
 - A controller **operator** for Home Assistant (see **Setup** below).
 
 Both web protocol versions are supported and **detected automatically**:
@@ -250,7 +268,8 @@ A controller whose session table filled with abandoned sessions has been seen to
 | **"Invalid authentication"** | Log in to the web interface with the same operator to check the details. Check the operator isn't disabled or locked out. |
 | **Can't connect** | Check you can open `http://<host>:<port>` in a browser on the same network as Home Assistant. |
 | **Away won't arm, Home works** | A zone is open (for example someone moving in a room). Check *Ready to arm* or the error message, or use **Force arm away**. |
-| **No "who did it"** | The operator needs permission to view the event log. |
+| **No "who did it"** | The operator needs permission to view the event log. Repairs will also tell you. |
+| **Something seems stuck** | Check the **Connection** sensor on the controller device: it shows whether the link is up, reconnecting or backing off to protect the controller. |
 | **Need help** | Download diagnostics from the integration's ⋮ menu. Passwords, PINs, serials and names in event lines are redacted. Attach it to an [issue](https://github.com/olliemaller/ha-protege-wx/issues). |
 
 Debug logging:

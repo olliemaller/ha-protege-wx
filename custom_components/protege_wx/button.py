@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
 from .coordinator import AreaInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 

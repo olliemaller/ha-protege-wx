@@ -15,9 +15,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
 from .const import DOMAIN, OPT_SHOW_ARMING
 from .coordinator import ARM_FAILED, ARM_OK, AreaInfo, ProtegeCoordinator
 from .entity import ProtegeEntity

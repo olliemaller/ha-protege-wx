@@ -734,3 +734,203 @@ async def test_legacy_panel_code_converted_by_options_flow(hass: HomeAssistant, 
     assert entry.options["users"][0]["name"] == "Panel code"
     await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM, "code": "2468"}, blocking=True)
     assert _state(hass, ALARM) == "armed_away"
+
+
+# ── 0.2.4: logbook, connection, open zones, Repairs ────────────────────────
+
+
+class _Clock:
+    """Stands in for the coordinator's ``time`` module, so tests can skip ahead."""
+
+    def __init__(self) -> None:
+        import time as real_time
+
+        self._real = real_time
+        self.offset = 0.0
+
+    def monotonic(self) -> float:
+        return self._real.monotonic() + self.offset
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    from custom_components.protege_wx import coordinator as coordinator_module
+
+    fake = _Clock()
+    monkeypatch.setattr(coordinator_module, "time", fake)
+    return fake
+
+
+async def test_logbook_sentences(hass: HomeAssistant, controller) -> None:
+    from custom_components.protege_wx.const import EVENT_LOGBOOK
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    logged = async_capture_events(hass, EVENT_LOGBOOK)
+    controller.log("User Jane Citizen Entry Granted Front Door Using User By Pin")
+    controller.log("Input Living Opened")
+    await _refresh(hass, entry)
+    assert [(e.data["name"], e.data["message"]) for e in logged] == [
+        ("Front Door", "access granted to Jane Citizen (PIN)")
+    ]  # the zone line is left to the Living sensor
+    assert logged[0].data["entity_id"] == "event.front_door_events"
+
+
+async def test_logbook_platform_describes(hass: HomeAssistant) -> None:
+    from homeassistant.core import Event
+
+    from custom_components.protege_wx.const import EVENT_LOGBOOK
+    from custom_components.protege_wx.logbook import async_describe_events
+
+    described = {}
+    async_describe_events(hass, lambda domain, event, fn: described.setdefault(event, fn))
+    entry = described[EVENT_LOGBOOK](
+        Event(EVENT_LOGBOOK, {"name": "Alarm", "message": "disarmed by Jane", "entity_id": "event.alarm_events"})
+    )
+    assert entry == {"name": "Alarm", "message": "disarmed by Jane", "entity_id": "event.alarm_events"}
+
+
+async def test_failed_arm_logbook_names_zones(hass: HomeAssistant, controller) -> None:
+    from custom_components.protege_wx.const import EVENT_LOGBOOK
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    logged = async_capture_events(hass, EVENT_LOGBOOK)
+    controller.state.events.append("Sun 25/10/2026 19:30:00 Input Living Opened")
+    controller.state.events.append("Sun 25/10/2026 19:30:00 Area Alarm Failure To ARM By User Jane Citizen")
+    await _refresh(hass, entry)
+    assert ("Alarm", "failed to arm by Jane Citizen: Living is open") in [
+        (e.data["name"], e.data["message"]) for e in logged
+    ]
+
+
+async def test_connection_sensor(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sensor = "sensor.protege_wx_controller_connection"
+    state = hass.states.get(sensor)
+    assert state.state == "connected"
+    assert state.attributes["protocol"] == "post"
+    assert state.attributes["last_success"] is not None
+    assert state.attributes["response_time_ms"] is not None
+    controller.offline = True
+    await _refresh(hass, entry)
+    assert _state(hass, sensor) == "reconnecting"  # stays available while the link is down
+    assert _state(hass, ALARM) == "unavailable"
+    controller.offline = False
+    await _refresh(hass, entry)
+    assert _state(hass, sensor) == "connected"
+
+
+async def test_open_zones_sensor(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    controller.state.areas[16] = [0, 0, 0, 0]
+    await _setup(hass, entry)
+    sensor = "sensor.alarm_open_zones"
+    assert _state(hass, sensor) == "0"
+    controller.open_input(3)  # Living: a stay zone
+    controller.open_input(5)  # Up Passage: armed in both modes
+    await _refresh(hass, entry)
+    state = hass.states.get(sensor)
+    assert state.state == "2"
+    assert state.attributes["zones"] == ["Living", "Up Passage"]
+    assert state.attributes["zones_home"] == ["Up Passage"]
+    assert state.attributes["ready_away"] is False and state.attributes["ready_home"] is False
+
+
+async def test_repairs_unreachable(hass: HomeAssistant, controller, clock) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    issue_id = f"controller_unreachable_{entry.entry_id}"
+    registry = ir.async_get(hass)
+    controller.offline = True
+    await _refresh(hass, entry)
+    clock.offset += 14 * 60
+    await _refresh(hass, entry)
+    assert registry.async_get_issue(DOMAIN, issue_id) is None  # not yet 15 minutes
+    clock.offset += 2 * 60
+    await _refresh(hass, entry)
+    issue = registry.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None and issue.translation_placeholders["minutes"] == "15"
+    controller.offline = False
+    await _refresh(hass, entry)
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_repairs_low_voltage(hass: HomeAssistant, controller, clock) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    issue_id = f"low_supply_voltage_{entry.entry_id}"
+    registry = ir.async_get(hass)
+
+    async def poll_health() -> None:
+        coordinator._last_health = None  # read health on this poll
+        await _refresh(hass, entry)
+
+    controller.voltage_mv = 11800
+    await poll_health()
+    clock.offset += 4 * 60
+    await poll_health()
+    assert registry.async_get_issue(DOMAIN, issue_id) is None  # under 5 minutes
+    clock.offset += 2 * 60
+    await poll_health()
+    issue = registry.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None and issue.translation_placeholders["volts"] == "11.8"
+    controller.voltage_mv = 12300  # between the thresholds: stays raised
+    await poll_health()
+    assert registry.async_get_issue(DOMAIN, issue_id) is not None
+    controller.voltage_mv = 12600
+    await poll_health()
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_repairs_event_log(hass: HomeAssistant, controller, clock) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    controller.deny_events = True
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    issue_id = f"event_log_unreadable_{entry.entry_id}"
+    registry = ir.async_get(hass)
+    clock.offset += 6 * 60
+    await _refresh(hass, entry)
+    issue = registry.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None and issue.translation_placeholders["operator"] == "Home Assistant"
+    controller.deny_events = False
+    await _refresh(hass, entry)
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_issues_cleared_on_unload(hass: HomeAssistant, controller, clock) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    controller.deny_events = True
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    clock.offset += 6 * 60
+    await _refresh(hass, entry)
+    registry = ir.async_get(hass)
+    assert registry.async_get_issue(DOMAIN, f"event_log_unreadable_{entry.entry_id}")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert registry.async_get_issue(DOMAIN, f"event_log_unreadable_{entry.entry_id}") is None
+
+
+async def test_leftover_issue_cleared_after_restart(hass: HomeAssistant, controller) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = _entry(controller)
+    entry.add_to_hass(hass)
+    issue_id = f"controller_unreachable_{entry.entry_id}"
+    ir.async_create_issue(
+        hass, DOMAIN, issue_id, is_fixable=False, severity=ir.IssueSeverity.ERROR,
+        translation_key="controller_unreachable",
+        translation_placeholders={"host": controller.host, "minutes": "15"},
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None

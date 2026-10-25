@@ -11,9 +11,9 @@ from typing import Any
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
 from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 from .wxapi.events import (

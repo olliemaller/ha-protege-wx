@@ -38,6 +38,18 @@ EVENT_HISTORY: Final = 50
 # Bus events
 EVENT_FAILED_TO_ARM: Final = "protege_wx_failed_to_arm"
 EVENT_LOG: Final = "protege_wx_event"
+# Logbook-only: carries a ready-made sentence; not meant for automations.
+EVENT_LOGBOOK: Final = "protege_wx_logbook"
+
+# Repairs
+UNREACHABLE_ISSUE_SECONDS: Final = 15 * 60
+LOW_VOLTAGE: Final = 12.0  # volts: raise the issue below this...
+LOW_VOLTAGE_CLEAR: Final = 12.5  # ...and clear it at or above this
+LOW_VOLTAGE_SECONDS: Final = 5 * 60
+EVENT_LOG_EMPTY_SECONDS: Final = 5 * 60
+ISSUE_UNREACHABLE: Final = "controller_unreachable"
+ISSUE_LOW_VOLTAGE: Final = "low_supply_voltage"
+ISSUE_EVENT_LOG: Final = "event_log_unreadable"
 
 DEFAULT_INPUT_TYPE: Final = "motion"
 INPUT_TYPES: Final = (

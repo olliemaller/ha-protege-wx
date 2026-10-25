@@ -13,9 +13,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
 from .const import DEFAULT_INPUT_TYPE, DOMAIN, OPT_INPUT_TYPES
 from .coordinator import AreaInfo, DoorInfo, InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity

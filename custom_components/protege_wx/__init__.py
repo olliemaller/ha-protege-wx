@@ -176,7 +176,10 @@ async def _async_reload_on_options(hass: HomeAssistant, entry: ProtegeConfigEntr
 
 async def async_unload_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> bool:
     """Unload a config entry; the session is logged out by the unload hooks."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        entry.runtime_data.coordinator.async_clear_issues()
+    return unloaded
 
 
 async def async_remove_config_entry_device(

@@ -23,12 +23,23 @@ jobs:
           ignore: brands
 
   tests:
+    name: tests (Home Assistant ${{ matrix.ha }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ha: "2025.6"
+            harness: "pytest-homeassistant-custom-component==0.13.252"
+            extra: "pycares<5"
+          - ha: latest
+            harness: "pytest-homeassistant-custom-component"
+            extra: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install pytest-homeassistant-custom-component ruff
+      - run: pip install ${{ matrix.harness }} ${{ matrix.extra }} ruff
       - run: ruff check --select E,F,W,B,UP,SIM,I --ignore E501,B904,B017 custom_components tests
       - run: pytest -q

@@ -80,6 +80,9 @@ class FakeController:
         self.bare_fail_logins = False
         self.retry_replies = 0
         self.health_troubles: list[str] = []
+        self.voltage_mv = 13566
+        self.deny_events = False  # operator without event-log permission
+        self.offline = False
         self.clock = datetime(2026, 10, 25, 19, 21, 0)
         self.app = web.Application()
         self.app.router.add_route("*", "/PRT_CTRL_DIN_ISAPI.dll", self._handle)
@@ -97,6 +100,8 @@ class FakeController:
     # ── transport ──────────────────────────────────────────────────────────
 
     async def _handle(self, request: web.Request) -> web.Response:
+        if self.offline:
+            raise web.HTTPServiceUnavailable()
         if self.protocol == "post":
             if request.method != "POST":
                 return web.Response(status=405)
@@ -176,6 +181,8 @@ class FakeController:
             self.sessions.pop(sessid, None)
             return "OK"
         if plain.startswith("Request&Type=Events"):
+            if self.deny_events:
+                return "FAIL"
             page = self.state.events[-20:]
             if not page:
                 return "<no response>"
@@ -184,7 +191,7 @@ class FakeController:
                 parts.append(f"Event{i}={text}&EventCodes{i}=1,2,3")
             return "&".join(parts)
         if plain.startswith("Request&Type=Health&SubType=Values"):
-            return "SerialNumber=A1B2C3D4&WXVersion=4.00 2510 P048    &NetworkVoltage=13566&MemTotal=56377344&MemUsed=19759104"
+            return f"SerialNumber=A1B2C3D4&WXVersion=4.00 2510 P048    &NetworkVoltage={self.voltage_mv}&MemTotal=56377344&MemUsed=19759104"
         if plain.startswith("Request&Type=Health&SubType=List"):
             if not self.health_troubles:
                 return "<no response>"

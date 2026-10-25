@@ -15,10 +15,10 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from . import ProtegeConfigEntry
-from .const import CONF_SERIAL, OPT_PANEL_CODE, OPT_USERS
+from .const import CONF_SERIAL, OPT_ALARMO_CODE, OPT_PANEL_CODE, OPT_USERS
 
 TO_REDACT = {
-    CONF_PASSWORD, CONF_USERNAME, CONF_HOST, CONF_SERIAL, OPT_PANEL_CODE, OPT_USERS,
+    CONF_PASSWORD, CONF_USERNAME, CONF_HOST, CONF_SERIAL, OPT_PANEL_CODE, OPT_USERS, OPT_ALARMO_CODE,
     "serial", "SerialNumber", "IPAddress",
 }
 

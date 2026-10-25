@@ -1,4 +1,5 @@
-"""Switches: "Hold open" per door, and outputs (PGMs) chosen in the options."""
+"""Switches: "Hold open" per door, walk test per area, and outputs (PGMs)
+chosen in the options."""
 from __future__ import annotations
 
 from typing import Any
@@ -6,16 +7,17 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_platform
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
 from .const import DOMAIN, OPT_OUTPUTS
-from .coordinator import DoorInfo, ProtegeCoordinator
+from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 from .wxapi.client import MAX_TIMED_SECONDS
+from .wxapi.events import KIND_AREA, ParsedEvent
 
 PARALLEL_UPDATES = 1
 
@@ -31,6 +33,11 @@ async def async_setup_entry(
     chosen = {int(rec_id) for rec_id in entry.options.get(OPT_OUTPUTS, [])}
     entities: list[SwitchEntity] = [
         ProtegeHoldOpenSwitch(data.coordinator, door) for door in data.site.doors.values()
+    ]
+    entities += [
+        ProtegeWalkTestSwitch(data.coordinator, area)
+        for area in data.site.areas.values()
+        if area.has_inputs is not False
     ]
     entities += [
         ProtegeOutputSwitch(data.coordinator, rec_id, name)
@@ -124,3 +131,59 @@ class ProtegeOutputSwitch(ProtegeEntity, SwitchEntity):
     async def async_service_pulse(self, seconds: int) -> None:
         """Turn the output on for ``seconds``; the controller turns it off."""
         await self._command(self.coordinator.client.set_output(self.rec_id, True, seconds))
+
+
+class ProtegeWalkTestSwitch(ProtegeEntity, SwitchEntity):
+    """Walk test: zones chime as they're tested instead of setting off the alarm.
+
+    The controller doesn't report walk-test status, so this follows what Home
+    Assistant asked for and any walk-test lines in the event log, and turns
+    itself off when the area arms.
+    """
+
+    _attr_translation_key = "walk_test"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_assumed_state = True
+
+    def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo) -> None:
+        super().__init__(coordinator, "area", area.id, key="walk_test", own_device=True)
+        self._area_name = area.name
+        self._attr_is_on = False
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self.coordinator.async_add_event_listener(self._on_event))
+
+    @callback
+    def _on_event(self, parsed: ParsedEvent) -> None:
+        text = parsed.event.text.lower()
+        if parsed.kind != KIND_AREA or parsed.subject != self._area_name or "walk test" not in text:
+            return
+        on = not any(word in text for word in ("end", "stop", "finish", "cancel", "off"))
+        if on != self._attr_is_on:
+            self._attr_is_on = on
+            self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        status = self.coordinator.data.areas.get(self.rec_id)
+        if self._attr_is_on and status is not None and status.is_armed_or_arming:
+            self._attr_is_on = False  # arming ends a walk test
+        super()._handle_coordinator_update()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._command(self.coordinator.client.walk_test(self.rec_id, True))
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._command(self.coordinator.client.walk_test(self.rec_id, False))
+        self._attr_is_on = False
+        self.async_write_ha_state()
+
+    async def async_service_pulse(self, seconds: int) -> None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="not_an_output",
+            translation_placeholders={"entity": self.entity_id},
+        )

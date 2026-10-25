@@ -1357,3 +1357,103 @@ async def test_door_forced_and_left_open(hass: HomeAssistant, controller) -> Non
     await _refresh_all(hass, entry)
     assert _state(hass, "binary_sensor.front_door_forced_open") == "off"
     assert _state(hass, "binary_sensor.front_door_left_open") == "on"
+
+
+async def test_walk_test_switch(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    switch = "switch.alarm_walk_test"
+    assert _state(hass, switch) == "off"
+    await hass.services.async_call("switch", "turn_on", {"entity_id": switch}, blocking=True)
+    assert _area_commands(controller)[-1] == 7
+    assert _state(hass, switch) == "on"
+    await _refresh(hass, entry)
+    assert _state(hass, switch) == "on"
+    controller.log("Area Alarm Walk Test Ended By User Jane Citizen")  # ended at a keypad
+    await _refresh(hass, entry)
+    assert _state(hass, switch) == "off"
+    await hass.services.async_call("switch", "turn_on", {"entity_id": switch}, blocking=True)
+    controller.state.areas[16] = [128, 128, 8, 0]  # armed
+    await _refresh(hass, entry)
+    assert _state(hass, switch) == "off"
+    assert hass.states.get("switch.system_area_walk_test") is None
+
+
+# ── 0.3.0: Alarmo sync ─────────────────────────────────────────────────────
+
+ALARMO = "alarm_control_panel.alarmo"
+
+
+async def _alarmo(hass: HomeAssistant) -> None:
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(
+        hass,
+        "alarm_control_panel",
+        {
+            "alarm_control_panel": {
+                "platform": "manual",
+                "name": "Alarmo",
+                "code_arm_required": False,
+                "arming_time": 0,
+                "delay_time": 0,
+                "trigger_time": 0,
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+
+async def test_alarmo_sync_both_ways(hass: HomeAssistant, controller) -> None:
+    await _alarmo(hass)
+    entry = _entry(controller, alarmo_entity=ALARMO, alarmo_area=16)
+    await _setup(hass, entry)
+
+    # Alarmo -> Protege
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARMO}, blocking=True)
+    await hass.async_block_till_done()
+    assert _area_commands(controller)[-1] == 3
+    assert _state(hass, ALARM) == "armed_away"
+    assert _state(hass, ALARMO) == "armed_away"
+    assert hass.states.get(ALARM).attributes["changed_by"] == "Alarmo"
+
+    # Protege (keypad) -> Alarmo
+    controller.state.areas[16] = [128, 0, 0, 0]
+    await _refresh(hass, entry)
+    assert _state(hass, ALARMO) == "disarmed"
+    controller.state.areas[16] = [128, 128, 64, 0]
+    await _refresh(hass, entry)
+    assert _state(hass, ALARMO) == "armed_home"
+    commands = len(controller.state.commands)
+    await _refresh(hass, entry)
+    assert len(controller.state.commands) == commands  # no echo back to the controller
+
+
+async def test_alarmo_disarmed_again_when_controller_refuses(hass: HomeAssistant, controller) -> None:
+    await _alarmo(hass)
+    entry = _entry(controller, alarmo_entity=ALARMO, alarmo_area=16)
+    await _setup(hass, entry)
+    controller.open_input(5)
+    await _refresh(hass, entry)
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_away", {"entity_id": ALARMO}, blocking=True)
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "disarmed"
+    assert _state(hass, ALARMO) == "disarmed"
+
+
+async def test_options_flow_alarmo(hass: HomeAssistant, controller) -> None:
+    await _alarmo(hass)
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "alarmo"})
+    assert result["step_id"] == "alarmo"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"alarmo_entity": ALARMO, "alarmo_area": "16", "alarmo_code": "1234"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options["alarmo_entity"] == ALARMO and entry.options["alarmo_area"] == 16
+    assert entry.options["alarmo_code"] == "1234"
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["entry"]["options"]["alarmo_code"] == "**REDACTED**"

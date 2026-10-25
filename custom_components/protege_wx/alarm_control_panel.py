@@ -264,12 +264,15 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
         force: bool,
         code: str | None,
         as_state: AlarmControlPanelState | None = None,
+        *,
+        authorise: bool = True,
     ) -> None:
         if mode == "stay" and force:
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="force_stay_unsupported"
             )
-        await self._authorise(code, "arm")
+        if authorise:
+            await self._authorise(code, "arm")
         self._requested = (mode, as_state) if as_state else None
         self._seen_armed = False
         try:
@@ -304,6 +307,26 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity):
         """Used by the force-arm buttons. Buttons can't carry a code, and arming
         (never disarming) is what they do."""
         await self._arm_now(mode, True)
+
+    async def async_sync_to(self, target: str) -> None:
+        """Follow another alarm (Alarmo): it has already checked the user."""
+        self.coordinator.ha_actor[self.rec_id] = ("Alarmo", time.monotonic())
+        if target == "disarmed":
+            await self._command(self.coordinator.client.disarm_area(self.rec_id))
+        elif target == "home":
+            if not self.area.stay_enabled:
+                raise ServiceValidationError(translation_domain=DOMAIN, translation_key="stay_off")
+            await self._arm("stay", False, None, authorise=False)
+        elif target == "night":
+            if self.night_mode == "off":
+                raise ServiceValidationError(translation_domain=DOMAIN, translation_key="night_off")
+            await self._arm(
+                self.night_mode, False, None, as_state=AlarmControlPanelState.ARMED_NIGHT, authorise=False
+            )
+        elif target == "vacation":
+            await self._arm("away", False, None, as_state=AlarmControlPanelState.ARMED_VACATION, authorise=False)
+        else:
+            await self._arm("away", False, None, authorise=False)
 
     async def async_silence(self) -> None:
         await self._command(self.coordinator.client.silence_area(self.rec_id))

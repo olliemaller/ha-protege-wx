@@ -33,6 +33,9 @@ from .const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
     NIGHT_MODES,
+    OPT_ALARMO_AREA,
+    OPT_ALARMO_CODE,
+    OPT_ALARMO_ENTITY,
     OPT_CODE_ARM_REQUIRED,
     OPT_DELAYS,
     OPT_INPUT_TYPES,
@@ -274,7 +277,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 await self.hass.async_add_executor_job(make_user, "Panel code", legacy)
             ]
         self._base = options
-        return self.async_show_menu(step_id="init", menu_options=["settings", "areas", "inputs", "users"])
+        return self.async_show_menu(step_id="init", menu_options=["settings", "areas", "inputs", "users", "alarmo"])
 
     # ── settings ───────────────────────────────────────────────────────────
 
@@ -392,6 +395,62 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 _area_key(area, "entry"), default=coordinator.area_delay(area.id, "entry")
             )] = seconds
         return self.async_show_form(step_id="areas", data_schema=vol.Schema(fields))
+
+    # ── Alarmo sync ────────────────────────────────────────────────────────
+
+    async def async_step_alarmo(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        from homeassistant.helpers import entity_registry as er
+
+        runtime = self.config_entry.runtime_data
+        areas = [a for a in runtime.site.areas.values() if a.has_inputs is not False]
+        if not areas:
+            return self.async_abort(reason="no_areas")
+        options = self._options()
+        if user_input is not None:
+            entity = user_input.get(OPT_ALARMO_ENTITY) or None
+            changes: dict[str, Any] = {
+                OPT_ALARMO_ENTITY: entity,
+                OPT_ALARMO_AREA: int(user_input.get(OPT_ALARMO_AREA, areas[0].id)) if entity else None,
+            }
+            code = (user_input.get(OPT_ALARMO_CODE) or "").strip()
+            if code:
+                changes[OPT_ALARMO_CODE] = code
+            elif user_input.get("clear_code") or not entity:
+                changes[OPT_ALARMO_CODE] = None
+            return self._save(**changes)
+        own = [
+            e.entity_id
+            for e in er.async_entries_for_config_entry(er.async_get(self.hass), self.config_entry.entry_id)
+            if e.domain == "alarm_control_panel"
+        ]
+        current_entity = options.get(OPT_ALARMO_ENTITY)
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    OPT_ALARMO_ENTITY,
+                    description={"suggested_value": current_entity} if current_entity else None,
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="alarm_control_panel", exclude_entities=own)
+                ),
+                vol.Required(
+                    OPT_ALARMO_AREA, default=str(options.get(OPT_ALARMO_AREA) or areas[0].id)
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[selector.SelectOptionDict(value=str(a.id), label=a.name) for a in areas],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(OPT_ALARMO_CODE): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                ),
+                vol.Optional("clear_code", default=False): selector.BooleanSelector(),
+            }
+        )
+        return self.async_show_form(
+            step_id="alarmo",
+            data_schema=schema,
+            description_placeholders={"code_set": "yes" if options.get(OPT_ALARMO_CODE) else "no"},
+        )
 
     # ── input types ────────────────────────────────────────────────────────
 

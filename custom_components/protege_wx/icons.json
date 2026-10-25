@@ -1,22 +1,72 @@
 {
   "entity": {
     "binary_sensor": {
-      "ready_to_arm": { "default": "mdi:shield-check", "state": { "off": "mdi:shield-alert" } },
-      "ready_to_arm_stay": { "default": "mdi:shield-home", "state": { "off": "mdi:shield-alert" } }
+      "ready_to_arm": {
+        "default": "mdi:shield-check",
+        "state": {
+          "off": "mdi:shield-alert"
+        }
+      },
+      "ready_to_arm_stay": {
+        "default": "mdi:shield-home",
+        "state": {
+          "off": "mdi:shield-alert"
+        }
+      }
     },
     "button": {
-      "force_arm_away": { "default": "mdi:shield-lock" },
-      "force_arm_instant": { "default": "mdi:shield-moon" },
-      "silence": { "default": "mdi:bell-off" }
+      "force_arm_away": {
+        "default": "mdi:shield-lock"
+      },
+      "force_arm_instant": {
+        "default": "mdi:shield-moon"
+      },
+      "silence": {
+        "default": "mdi:bell-off"
+      }
     },
-    "switch": { "hold_open": { "default": "mdi:door-open" } },
-    "select": { "bypass": { "default": "mdi:shield-off-outline" } },
-    "sensor": { "last_event": { "default": "mdi:script-text-outline" } }
+    "switch": {
+      "hold_open": {
+        "default": "mdi:door-open"
+      }
+    },
+    "select": {
+      "bypass": {
+        "default": "mdi:shield-off-outline"
+      }
+    },
+    "sensor": {
+      "last_event": {
+        "default": "mdi:script-text-outline"
+      },
+      "connection": {
+        "default": "mdi:lan-connect",
+        "state": {
+          "reconnecting": "mdi:lan-pending",
+          "backing_off": "mdi:timer-sand",
+          "login_failed": "mdi:account-lock"
+        }
+      },
+      "open_zones": {
+        "default": "mdi:motion-sensor",
+        "state": {
+          "0": "mdi:shield-check"
+        }
+      }
+    }
   },
   "services": {
-    "arm": { "service": "mdi:shield-lock" },
-    "unlock_door": { "service": "mdi:lock-open-variant" },
-    "bypass": { "service": "mdi:shield-off-outline" },
-    "pulse_output": { "service": "mdi:timer-outline" }
+    "arm": {
+      "service": "mdi:shield-lock"
+    },
+    "unlock_door": {
+      "service": "mdi:lock-open-variant"
+    },
+    "bypass": {
+      "service": "mdi:shield-off-outline"
+    },
+    "pulse_output": {
+      "service": "mdi:timer-outline"
+    }
   }
 }

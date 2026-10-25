@@ -8,9 +8,9 @@ from homeassistant.components.lock import LockEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
 from .coordinator import DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 from homeassistant.components.select import SelectEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
 from .coordinator import InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 

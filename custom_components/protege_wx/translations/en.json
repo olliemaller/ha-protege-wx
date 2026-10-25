@@ -207,6 +207,46 @@
       },
       "last_event": {
         "name": "Last event"
+      },
+      "connection": {
+        "name": "Connection",
+        "state": {
+          "connected": "Connected",
+          "reconnecting": "Reconnecting",
+          "backing_off": "Backing off",
+          "login_failed": "Login failed"
+        },
+        "state_attributes": {
+          "last_success": {
+            "name": "Last successful update"
+          },
+          "protocol": {
+            "name": "Protocol"
+          },
+          "response_time_ms": {
+            "name": "Response time (ms)"
+          },
+          "logins_last_10_min": {
+            "name": "Logins in the last 10 minutes"
+          }
+        }
+      },
+      "open_zones": {
+        "name": "Open zones",
+        "state_attributes": {
+          "zones": {
+            "name": "Open zones (away)"
+          },
+          "zones_home": {
+            "name": "Open zones (home)"
+          },
+          "ready_away": {
+            "name": "Ready to arm away"
+          },
+          "ready_home": {
+            "name": "Ready to arm home"
+          }
+        }
       }
     },
     "event": {
@@ -352,6 +392,20 @@
           "description": "1 to 65535."
         }
       }
+    }
+  },
+  "issues": {
+    "controller_unreachable": {
+      "title": "Protege WX controller is unreachable",
+      "description": "Home Assistant hasn't been able to reach the controller at {host} for {minutes} minutes, so alarm, door and zone states are out of date.\n\nCheck that the controller is powered and on the network, and that you can open its web interface in a browser. This alert clears by itself once the controller answers again."
+    },
+    "low_supply_voltage": {
+      "title": "Protege WX supply voltage is low",
+      "description": "The controller's supply has been below {threshold} V for more than 5 minutes (it's now {volts} V; a healthy supply is about 13.5 V).\n\nThis usually means a mains failure with the backup battery running down, or a failing battery or power supply. Get the alarm serviced soon: when the battery goes flat the alarm stops working. This alert clears by itself once the supply is back above 12.5 V."
+    },
+    "event_log_unreadable": {
+      "title": "Protege WX can't read the event log",
+      "description": "The operator {operator} hasn't been able to read the controller's event log for 5 minutes. Without it, Home Assistant can't show who armed, disarmed or opened a door, and can't tell you why the alarm didn't arm.\n\nIn the Protege web interface, open the operator's role and allow it to view events (the event log / review permission), then wait a minute. This alert clears by itself once the log can be read."
     }
   }
 }

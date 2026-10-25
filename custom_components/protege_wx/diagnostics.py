@@ -45,6 +45,12 @@ async def async_get_config_entry_diagnostics(
         },
         "protocol": data.client.protocol,
         "events_supported": coordinator.events_supported,
+        "connection": {
+            "state": coordinator.connection_state,
+            "last_success": coordinator.last_success.isoformat() if coordinator.last_success else None,
+            "response_times_ms": [round(t * 1000) for t in coordinator.response_times],
+            "logins_last_10_min": coordinator.logins_last_window(),
+        },
         "site": async_redact_data(asdict(data.site), TO_REDACT),
         "status": {
             "areas": {

@@ -9,9 +9,9 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
 from .const import DOMAIN, OPT_OUTPUTS
 from .coordinator import DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity

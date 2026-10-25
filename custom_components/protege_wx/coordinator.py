@@ -18,13 +18,16 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_SCAN_INTERVAL,
@@ -32,12 +35,22 @@ from .const import (
     EVENT_FAILED_TO_ARM,
     EVENT_HISTORY,
     EVENT_LOG,
+    EVENT_LOG_EMPTY_SECONDS,
+    EVENT_LOGBOOK,
     FULL_REFRESH_SECONDS,
     HEALTH_REFRESH_SECONDS,
+    ISSUE_EVENT_LOG,
+    ISSUE_LOW_VOLTAGE,
+    ISSUE_UNREACHABLE,
+    LOW_VOLTAGE,
+    LOW_VOLTAGE_CLEAR,
+    LOW_VOLTAGE_SECONDS,
     OPT_NOTIFY_FAILED_ARM,
     OPT_OUTPUTS,
     OPT_SCAN_INTERVAL,
+    UNREACHABLE_ISSUE_SECONDS,
 )
+from .describe import describe
 from .users import UserCodes
 from .wxapi import (
     NO_RECORD,
@@ -354,6 +367,17 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self.codes = UserCodes(dict(entry.options))
         # (monotonic time received, area name, zones) for recent arm failures.
         self.recent_failures: deque[tuple[float, str, list[str]]] = deque(maxlen=10)
+        # Connection health, for the connection sensor and Repairs.
+        self.last_success: datetime | None = None
+        self.response_times: deque[float] = deque(maxlen=30)  # seconds per poll
+        self._failing_since: float | None = None
+        self._low_voltage_since: float | None = None
+        self._events_empty_since: float | None = None
+        self._last_page_empty = False
+        # Issues raised by this run, and ones that may be left from a previous
+        # run (Repairs persist across restarts) until a poll shows they're over.
+        self._issues: set[str] = set()
+        self._stale_issues: set[str] = {ISSUE_UNREACHABLE, ISSUE_LOW_VOLTAGE, ISSUE_EVENT_LOG}
 
     # ── event listeners ────────────────────────────────────────────────────
 
@@ -451,7 +475,11 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
             raise
         except ProtegeError as err:
             _LOGGER.debug("Event log not readable: %s", err)
+            self._last_page_empty = True
             return []
+        # A real controller's log is never empty; an empty page usually means
+        # the operator isn't allowed to read it (the reply is a bare FAIL).
+        self._last_page_empty = not page
         return [(key, event) for key, event in zip(self._keys(page), page, strict=True)
                 if key not in self._seen]
 
@@ -482,6 +510,16 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         return news
 
     async def _async_update_data(self) -> ProtegeState:
+        started = time.monotonic()
+        try:
+            state = await self._async_poll()
+        except UpdateFailed:
+            self._record_failure(started)
+            raise
+        self._record_success(started, state)
+        return state
+
+    async def _async_poll(self) -> ProtegeState:
         previous = self.data or ProtegeState()
         now = time.monotonic()
         try:
@@ -533,6 +571,12 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
     def _dispatch(self, events: list[ParsedEvent], state: ProtegeState) -> None:
         for parsed in events:
             self.history.append(parsed)
+            zones = (
+                self.zones_behind_failure(parsed, events, state)
+                if parsed.kind == KIND_AREA and parsed.event_type == "failed_to_arm"
+                else None
+            )
+            self._log(parsed, zones)
             self.hass.bus.async_fire(
                 EVENT_LOG,
                 {
@@ -547,13 +591,151 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                     "time": parsed.event.time.isoformat() if parsed.event.time else None,
                 },
             )
-            if parsed.kind == KIND_AREA and parsed.event_type == "failed_to_arm":
-                self._failed_to_arm(parsed, events, state)
+            if zones is not None:
+                self._failed_to_arm(parsed, zones)
             for listener in list(self._event_listeners):
                 try:
                     listener(parsed)
                 except Exception:  # one broken listener mustn't drop the rest
                     _LOGGER.exception("Error handling Protege event %s", parsed.event.text)
+
+    # ── logbook ────────────────────────────────────────────────────────────
+
+    def actor_name(self, parsed: ParsedEvent) -> str | None:
+        """Who did it, naming the Home Assistant user when this integration did."""
+        if not parsed.by or not self.is_own_operator(parsed.by):
+            return parsed.by
+        area = self.site.area_by_name(parsed.subject or "") if parsed.kind == KIND_AREA else None
+        actor = self.ha_actor.get(area.id) if area else None
+        if actor and time.monotonic() - actor[1] < 30:
+            return f"{actor[0]} (Home Assistant)"
+        return "Home Assistant"
+
+    def _event_entity_id(self, parsed: ParsedEvent) -> str | None:
+        """The event entity a line belongs to, so the logbook links to it."""
+        if parsed.kind == KIND_AREA:
+            obj, kind = self.site.area_by_name(parsed.subject or ""), "area"
+        elif parsed.kind in (KIND_DOOR, KIND_ACCESS):
+            obj, kind = self.site.door_by_name(parsed.subject or ""), "door"
+        else:
+            obj, kind = None, "controller"
+        from .entity import controller_uid
+
+        uid = controller_uid(self)
+        unique_id = f"{uid}_{kind}_{obj.id}_events" if obj else f"{uid}_controller_0_events"
+        return er.async_get(self.hass).async_get_entity_id("event", DOMAIN, unique_id)
+
+    @callback
+    def _log(self, parsed: ParsedEvent, zones: list[str] | None) -> None:
+        described = describe(parsed, zones, by=self.actor_name(parsed))
+        if described is None:
+            return
+        name, message = described
+        self.hass.bus.async_fire(
+            EVENT_LOGBOOK,
+            {"name": name, "message": message, "entity_id": self._event_entity_id(parsed)},
+        )
+
+    # ── connection health and Repairs ──────────────────────────────────────
+
+    @property
+    def connection_state(self) -> str:
+        """connected / reconnecting / backing_off / login_failed."""
+        if self.client.auth_failed:
+            return "login_failed"
+        if time.monotonic() < self.client.guard.backoff_until:
+            return "backing_off"
+        return "connected" if self.last_update_success else "reconnecting"
+
+    def logins_last_window(self) -> int:
+        from .wxapi.client import LOGIN_WINDOW
+
+        now = time.monotonic()
+        return sum(1 for t in self.client.guard.login_times if now - t <= LOGIN_WINDOW)
+
+    def _record_failure(self, started: float) -> None:
+        now = time.monotonic()
+        if self._failing_since is None:
+            self._failing_since = started
+        if now - self._failing_since >= UNREACHABLE_ISSUE_SECONDS:
+            self._raise_issue(
+                ISSUE_UNREACHABLE,
+                ir.IssueSeverity.ERROR,
+                {"host": self.client.host, "minutes": str(UNREACHABLE_ISSUE_SECONDS // 60)},
+            )
+
+    def _record_success(self, started: float, state: ProtegeState) -> None:
+        now = time.monotonic()
+        self.response_times.append(now - started)
+        self.last_success = dt_util.utcnow()
+        self._failing_since = None
+        self._clear_issue(ISSUE_UNREACHABLE)
+        self._check_voltage(now, state)
+        self._check_event_log(now)
+
+    def _check_voltage(self, now: float, state: ProtegeState) -> None:
+        try:
+            volts = float((state.health.get("NetworkVoltage") or "").strip()) / 1000
+        except ValueError:
+            return  # not reported (or not readable): leave things as they are
+        if volts >= LOW_VOLTAGE_CLEAR:
+            self._low_voltage_since = None
+            self._clear_issue(ISSUE_LOW_VOLTAGE)
+        elif volts < LOW_VOLTAGE:
+            if self._low_voltage_since is None:
+                self._low_voltage_since = now
+            if now - self._low_voltage_since >= LOW_VOLTAGE_SECONDS:
+                self._raise_issue(
+                    ISSUE_LOW_VOLTAGE,
+                    ir.IssueSeverity.WARNING,
+                    {"volts": f"{volts:.1f}", "threshold": f"{LOW_VOLTAGE:.1f}"},
+                )
+
+    def _check_event_log(self, now: float) -> None:
+        if not self.events_supported:
+            return
+        if not self._last_page_empty:
+            self._events_empty_since = None
+            self._clear_issue(ISSUE_EVENT_LOG)
+            return
+        if self._events_empty_since is None:
+            self._events_empty_since = now
+        if now - self._events_empty_since >= EVENT_LOG_EMPTY_SECONDS:
+            self._raise_issue(
+                ISSUE_EVENT_LOG, ir.IssueSeverity.WARNING, {"operator": self.client.username}
+            )
+
+    def _issue_id(self, issue: str) -> str:
+        return f"{issue}_{self.config_entry.entry_id}"
+
+    def _raise_issue(self, issue: str, severity: ir.IssueSeverity, placeholders: dict[str, str]) -> None:
+        if issue in self._issues:
+            return
+        self._issues.add(issue)
+        self._stale_issues.discard(issue)
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._issue_id(issue),
+            is_fixable=False,
+            severity=severity,
+            translation_key=issue,
+            translation_placeholders=placeholders,
+        )
+
+    def _clear_issue(self, issue: str) -> None:
+        if issue in self._issues or issue in self._stale_issues:
+            self._issues.discard(issue)
+            self._stale_issues.discard(issue)
+            ir.async_delete_issue(self.hass, DOMAIN, self._issue_id(issue))
+
+    @callback
+    def async_clear_issues(self) -> None:
+        """Remove every issue this entry raised (on unload or removal)."""
+        for issue in (ISSUE_UNREACHABLE, ISSUE_LOW_VOLTAGE, ISSUE_EVENT_LOG):
+            ir.async_delete_issue(self.hass, DOMAIN, self._issue_id(issue))
+        self._issues.clear()
+        self._stale_issues.clear()
 
     # ── arm-failure feedback ───────────────────────────────────────────────
 
@@ -600,8 +782,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         area = self.site.area_by_name(failure.subject or "")
         return self.open_zones(area.id, state) if area else []
 
-    def _failed_to_arm(self, failure: ParsedEvent, events: list[ParsedEvent], state: ProtegeState) -> None:
-        zones = self.zones_behind_failure(failure, events, state)
+    def _failed_to_arm(self, failure: ParsedEvent, zones: list[str]) -> None:
         self.recent_failures.append((time.monotonic(), failure.subject or "", zones))
         self.hass.bus.async_fire(
             EVENT_FAILED_TO_ARM,

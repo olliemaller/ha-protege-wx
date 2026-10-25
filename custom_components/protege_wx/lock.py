@@ -11,12 +11,14 @@ from homeassistant.helpers import entity_platform
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
+from .const import DEFAULT_VISITOR_MINUTES, OPT_VISITOR_MINUTES
 from .coordinator import DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 
 PARALLEL_UPDATES = 1
 
 SERVICE_UNLOCK_DOOR = "unlock_door"
+SERVICE_VISITOR_UNLOCK = "visitor_unlock"
 
 
 async def async_setup_entry(
@@ -25,12 +27,19 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     data = entry.runtime_data
-    async_add_entities(ProtegeDoorLock(data.coordinator, door) for door in data.site.doors.values())
+    async_add_entities(
+        ProtegeDoorLock(entry, data.coordinator, door) for door in data.site.doors.values()
+    )
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service(
         SERVICE_UNLOCK_DOOR,
         {vol.Optional("hold_open", default=False): cv.boolean},
         "async_service_unlock",
+    )
+    platform.async_register_entity_service(
+        SERVICE_VISITOR_UNLOCK,
+        {vol.Optional("minutes"): vol.All(vol.Coerce(int), vol.Range(min=1, max=240))},
+        "async_visitor_unlock",
     )
 
 
@@ -44,8 +53,13 @@ class ProtegeDoorLock(ProtegeEntity, LockEntity):
 
     _attr_name = None
 
-    def __init__(self, coordinator: ProtegeCoordinator, door: DoorInfo) -> None:
+    def __init__(self, entry: ProtegeConfigEntry, coordinator: ProtegeCoordinator, door: DoorInfo) -> None:
         super().__init__(coordinator, "door", door.id, own_device=True)
+        self._entry = entry
+
+    @property
+    def _visitors(self):
+        return self._entry.runtime_data.visitors
 
     @property
     def _status(self):
@@ -66,9 +80,16 @@ class ProtegeDoorLock(ProtegeEntity, LockEntity):
         status = self._status
         if status is None:
             return {}
-        return {"controller_state": status.lock, "held_open": bool(status.is_latched)}
+        until = self._visitors.until.get(self.rec_id) if self._visitors else None
+        return {
+            "controller_state": status.lock,
+            "held_open": bool(status.is_latched),
+            "visitor_until": until.isoformat() if until else None,
+        }
 
     async def async_lock(self, **kwargs: Any) -> None:
+        if self._visitors:
+            self._visitors.cancel(self.rec_id)
         await self._command(self.coordinator.client.lock_door(self.rec_id))
 
     async def async_unlock(self, **kwargs: Any) -> None:
@@ -76,3 +97,9 @@ class ProtegeDoorLock(ProtegeEntity, LockEntity):
 
     async def async_service_unlock(self, hold_open: bool = False) -> None:
         await self._command(self.coordinator.client.unlock_door(self.rec_id, latched=hold_open))
+
+    async def async_visitor_unlock(self, minutes: int | None = None) -> None:
+        """Hold the door unlocked for a while, then lock it again."""
+        if minutes is None:
+            minutes = int(self._entry.options.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES))
+        await self._command(self._visitors.async_unlock(self.rec_id, minutes))

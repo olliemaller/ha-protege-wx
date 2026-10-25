@@ -34,6 +34,7 @@ from .coordinator import ProtegeCoordinator, ProtegeSite, async_discover
 from .entity import controller_device, controller_uid, object_identifier
 from .health import entry_health
 from .visitor import VisitorUnlocks, visitor_store
+from .voice import async_setup_voice
 from .wxapi import (
     PROTOCOL_AUTO,
     LoginGuard,
@@ -139,6 +140,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
         entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(async_setup_voice(hass))
     if entry.options.get(OPT_ALARMO_ENTITY) and entry.options.get(OPT_ALARMO_AREA) is not None:
         sync = AlarmoSync(hass, entry)
         sync.async_start()

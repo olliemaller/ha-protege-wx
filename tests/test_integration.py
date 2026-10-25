@@ -11,7 +11,7 @@ from homeassistant.const import (
     CONF_USERNAME,
     EVENT_HOMEASSISTANT_STOP,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
@@ -1457,3 +1457,76 @@ async def test_options_flow_alarmo(hass: HomeAssistant, controller) -> None:
     assert entry.options["alarmo_code"] == "1234"
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     assert diagnostics["entry"]["options"]["alarmo_code"] == "**REDACTED**"
+
+
+# ── 0.3.0: voice ───────────────────────────────────────────────────────────
+
+
+async def _ask(hass: HomeAssistant, text: str) -> str:
+    from homeassistant.components import conversation
+
+    result = await conversation.async_converse(hass, text, None, Context(), language="en")
+    return result.response.speech["plain"]["speech"]
+
+
+async def test_voice_questions(hass: HomeAssistant, controller) -> None:
+    from homeassistant.setup import async_setup_component
+
+    pytest.importorskip("hassil")
+
+    assert await async_setup_component(hass, "homeassistant", {})
+    assert await async_setup_component(hass, "conversation", {})
+    entry = _entry(controller)
+    await _setup(hass, entry)
+
+    assert await _ask(hass, "Is the house armed?") == "The Alarm is disarmed."
+    assert await _ask(hass, "Can I arm?") == "Yes, the Alarm is ready to arm."
+    controller.open_input(3)
+    controller.open_input(5)
+    await _refresh(hass, entry)
+    assert await _ask(hass, "can i arm the house") == "Not yet: Living and Up Passage are open."
+    assert await _ask(hass, "Who came in last?") == "Nobody has come in with a card or PIN that I know of."
+    controller.log("User Jane Citizen Entry Granted Front Door Using User By Pin")
+    await _refresh(hass, entry)
+    answer = await _ask(hass, "who came home last")
+    assert answer.startswith("Jane Citizen, at ") and answer.endswith(" at the Front Door.")
+
+
+async def test_user_flow_warns_about_missing_permissions(hass: HomeAssistant, controller) -> None:
+    controller.deny_events = True
+    controller.permit_details = False
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["type"] is FlowResultType.MENU and result["step_id"] == "permissions"
+    missing = result["description_placeholders"]["missing"]
+    assert "Event log" in missing and "Record details" in missing and "Doors" not in missing
+
+    # Fixed in Protege, then re-checked: straight through.
+    controller.deny_events = False
+    controller.permit_details = True
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "recheck"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+
+
+async def test_user_flow_can_carry_on_without_permissions(hass: HomeAssistant, controller) -> None:
+    controller.deny_events = True
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "recheck"})
+    assert result["type"] is FlowResultType.MENU  # still missing
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "continue_anyway"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()

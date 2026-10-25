@@ -54,6 +54,9 @@ from .const import (
 from .users import UserCodes, make_user
 from .wxapi import (
     PROTOCOL_AUTO,
+    TBL_AREAS,
+    TBL_DOORS,
+    TBL_INPUTS,
     ProtegeAuthError,
     ProtegeClient,
     ProtegeConnectionError,
@@ -97,10 +100,62 @@ async def validate_login(
         return {
             CONF_PROTOCOL: client.protocol,
             CONF_SERIAL: (health.get("SerialNumber") or "").strip() or None,
+            "missing": await check_permissions(client, health),
         }
     finally:
         await client.close()
         await session.close()
+
+
+# What each missing permission costs, for the setup warning.
+PERMISSION_EFFECTS = {
+    "areas": "Areas: no alarm panels can be set up (give the operator the areas to view and control).",
+    "area_status": "Area status: alarm states won't show.",
+    "inputs": "Inputs: no zone sensors, bypass or open-zone checks.",
+    "doors": "Doors: no locks or door sensors.",
+    "details": "Record details: every zone is treated as in use, Stay and Instant arming are assumed, and delays use defaults.",
+    "events": "Event log: no events, logbook, \"who did it\", failed-arm reasons, emergencies or last-seen sensors.",
+    "health": "Health: no supply voltage, controller troubles or serial number (so the controller can't be told apart if its address changes).",
+}
+
+
+async def check_permissions(client: ProtegeClient, health: dict[str, str]) -> list[str]:
+    """Which of the things this integration reads the operator can't see.
+
+    A refused request reads as empty, so "empty" is taken as "not permitted".
+    """
+    missing: list[str] = []
+
+    async def empty(call) -> bool:
+        try:
+            return not await call
+        except ProtegeAuthError:
+            raise
+        except ProtegeError:
+            return True
+
+    areas = {}
+    try:
+        areas = await client.list_records(TBL_AREAS)
+    except ProtegeAuthError:
+        raise
+    except ProtegeError:
+        pass
+    if not areas:
+        missing.append("areas")
+    elif await empty(client.area_status()):
+        missing.append("area_status")
+    if await empty(client.list_records(TBL_INPUTS)) or await empty(client.input_status()):
+        missing.append("inputs")
+    if not await empty(client.list_records(TBL_DOORS)) and await empty(client.door_status()):
+        missing.append("doors")
+    if areas and await empty(client.get_record(TBL_AREAS, next(iter(areas)))):
+        missing.append("details")
+    if await empty(client.events()):
+        missing.append("events")
+    if not health:
+        missing.append("health")
+    return missing
 
 
 def _errors_for(err: Exception, placeholders: dict[str, str]) -> dict[str, str]:
@@ -136,21 +191,64 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
                 if extra[CONF_SERIAL]:
                     await self.async_set_unique_id(extra[CONF_SERIAL])
                     self._abort_if_unique_id_configured(updates={CONF_HOST: host})
-                return self.async_create_entry(
-                    title=f"Protege WX ({host})",
-                    data={
-                        CONF_HOST: host,
-                        CONF_USERNAME: user_input[CONF_USERNAME].strip(),
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                        CONF_PROTOCOL: extra[CONF_PROTOCOL],
-                    },
-                )
+                self._pending = {
+                    CONF_HOST: host,
+                    CONF_USERNAME: user_input[CONF_USERNAME].strip(),
+                    CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    CONF_PROTOCOL: extra[CONF_PROTOCOL],
+                }
+                self._missing = extra["missing"]
+                if self._missing:
+                    return await self.async_step_permissions()
+                return self._create()
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(USER_SCHEMA, user_input),
             errors=errors,
             description_placeholders=placeholders,
         )
+
+    _pending: dict[str, Any]
+    _missing: list[str]
+
+    def _create(self) -> ConfigFlowResult:
+        return self.async_create_entry(
+            title=f"Protege WX ({self._pending[CONF_HOST]})", data=self._pending
+        )
+
+    async def async_step_permissions(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Warn about what the operator can't see: fix it and re-check, or carry on."""
+        return self.async_show_menu(
+            step_id="permissions",
+            menu_options=["recheck", "continue_anyway"],
+            description_placeholders={
+                "username": self._pending[CONF_USERNAME],
+                "missing": "\n".join(f"- {PERMISSION_EFFECTS[m]}" for m in self._missing),
+            },
+        )
+
+    async def async_step_recheck(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        try:
+            extra = await validate_login(
+                self.hass,
+                self._pending[CONF_HOST],
+                self._pending[CONF_USERNAME],
+                self._pending[CONF_PASSWORD],
+            )
+        except Exception as err:  # noqa: BLE001 - show the warning again
+            _LOGGER.debug("Permission re-check failed: %s", err)
+        else:
+            self._missing = extra["missing"]
+            if not self._missing:
+                return self._create()
+        return await self.async_step_permissions()
+
+    async def async_step_continue_anyway(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return self._create()
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         return await self.async_step_reauth_confirm()

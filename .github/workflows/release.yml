@@ -1,0 +1,38 @@
+name: Release
+
+# When a release is published: check the tag matches the manifest version,
+# then attach protege_wx.zip (the integration folder) for manual installs.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(python3 -c "import json; print(json.load(open('custom_components/protege_wx/manifest.json'))['version'])")
+          echo "Release $tag, manifest $manifest"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::The tag (v$tag) doesn't match manifest.json ($manifest). Bump the manifest first."
+            exit 1
+          fi
+
+      - name: Build protege_wx.zip
+        run: |
+          cd custom_components/protege_wx
+          find . -name '__pycache__' -prune -exec rm -rf {} +
+          zip -r -X "$GITHUB_WORKSPACE/protege_wx.zip" . -x '*.pyc'
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" protege_wx.zip --clobber

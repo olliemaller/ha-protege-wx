@@ -273,7 +273,7 @@ Tests run against `tests/fake_controller.py`. It speaks both protocols with the 
 
 This integration is built and maintained by **Oliver Maller** at **[Arcnode IT](https://arcnode.com.au)**, a Melbourne company that designs, installs and supports UniFi networks, Apple HomeKit and alarm systems.
 
-Bugs and feature requests go in [issues](https://github.com/olliemaller/ha-protege-wx/issues). If you'd like a Protege WX, UniFi or HomeKit system installed or integrated professionally in Melbourne or Victoria, [get in touch with Arcnode](https://arcnode.com.au).
+Bugs and feature requests go in [issues](https://github.com/olliemaller/ha-protege-wx/issues). If you'd like a UniFi network, HomeKit setup or alarm system installed professionally in Melbourne or Victoria, [get in touch with Arcnode](https://arcnode.com.au).
 
 <br clear="left">
 

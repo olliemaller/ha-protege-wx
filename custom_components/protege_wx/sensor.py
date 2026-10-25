@@ -132,9 +132,23 @@ class ProtegeConnection(ProtegeEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = CONNECTION_STATES
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # These change on every poll: keep them out of the recorder.
+    _unrecorded_attributes = frozenset({"last_success", "response_time_ms"})
 
     def __init__(self, coordinator: ProtegeCoordinator) -> None:
         super().__init__(coordinator, "controller", 0, key="connection")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self.coordinator.async_add_status_listener(self._on_status))
+
+    @callback
+    def _on_status(self) -> None:
+        # The coordinator only tells entities about the first of a run of
+        # failures; this keeps "backing off" and "login failed" current.
+        current = self.hass.states.get(self.entity_id) if self.entity_id else None
+        if current is None or current.state != self.native_value:
+            self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
@@ -143,6 +157,7 @@ class ProtegeConnection(ProtegeEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         return self.coordinator.connection_state
+
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

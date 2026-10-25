@@ -6,7 +6,8 @@ blueprint:
     with buttons that act on them.
 
 
-    - **Alarm going off**, with Disarm (asks for your PIN) and Silence buttons.
+    - **Entry delay** (someone's come in and the alarm is about to go off) and
+    **alarm going off**, with Disarm (asks for your PIN) and Silence buttons.
 
     - **Duress, panic or medical** alarms, as critical alerts.
 
@@ -59,6 +60,11 @@ blueprint:
       input:
         notify_alarm:
           name: Alarm going off (with Disarm and Silence)
+          default: true
+          selector:
+            boolean:
+        notify_entry:
+          name: Entry delay started (with Disarm)
           default: true
           selector:
             boolean:
@@ -157,6 +163,10 @@ triggers:
     entity_id: !input alarm_panel
     to: triggered
     id: alarm
+  - trigger: state
+    entity_id: !input alarm_panel
+    to: pending
+    id: entry
   - trigger: event
     event_type: protege_wx_emergency
     id: emergency
@@ -190,6 +200,7 @@ variables:
     {{ services_text.split('\n') | map('trim') | reject('equalto', '') | list }}
   pin_to_arm: !input pin_to_arm
   want_alarm: !input notify_alarm
+  want_entry: !input notify_entry
   want_emergency: !input notify_emergency
   want_failed: !input notify_failed_arm
   want_faults: !input notify_faults
@@ -210,6 +221,8 @@ variables:
   message: >-
     {% if trigger.id == 'alarm' %}
       {{ area_name }} is going off{% set cause = states(alarm_panel | replace('alarm_control_panel.', 'sensor.') ~ '_alarm_cause') %}{% if cause not in ['none', 'unknown', 'unavailable'] %}: {{ cause }}{% endif %}.
+    {% elif trigger.id == 'entry' %}
+      Someone's come in. {{ area_name }} will go off when the entry delay ends.
     {% elif trigger.id == 'emergency' %}
       {{ trigger.event.data.type | capitalize }} alarm{% if trigger.event.data.area %} in {{ trigger.event.data.area }}{% endif %}{% if trigger.event.data.by %} ({{ trigger.event.data.by }}){% endif %}. Check everyone is safe.
     {% elif trigger.id == 'failed_to_arm' %}
@@ -227,7 +240,9 @@ variables:
   buttons: >-
     {% set pin = {'behavior': 'textInput', 'textInputButtonTitle': 'OK', 'textInputPlaceholder': 'PIN'} %}
     {% set arm_pin = pin if pin_to_arm else {} %}
-    {% if trigger.id == 'alarm' %}
+    {% if trigger.id == 'entry' %}
+      {{ [dict({'action': act_disarm, 'title': 'Disarm'}.items() | list + pin.items() | list)] }}
+    {% elif trigger.id == 'alarm' %}
       {{ [dict({'action': act_disarm, 'title': 'Disarm', 'destructive': true}.items() | list + pin.items() | list),
           {'action': act_silence, 'title': 'Silence'}] }}
     {% elif trigger.id == 'failed_to_arm' %}
@@ -244,6 +259,7 @@ variables:
     {{ 'critical' if trigger.id in ['alarm', 'emergency'] else 'passive' if trigger.id == 'bedtime' else 'time-sensitive' }}
   wanted: >-
     {{ (trigger.id == 'alarm' and want_alarm)
+       or (trigger.id == 'entry' and want_entry)
        or (trigger.id == 'emergency' and want_emergency)
        or (trigger.id == 'failed_to_arm' and want_failed and trigger.event.data.area == area_name)
        or (trigger.id == 'bedtime' and people | count > 0 and is_state(alarm_panel, 'disarmed')

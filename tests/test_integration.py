@@ -1628,6 +1628,10 @@ async def test_blueprint_alarm_disarm_with_pin(hass: HomeAssistant, controller) 
     entry = _entry(controller, users=[make_user("Jane", "4321")])
     await _setup(hass, entry)
     sent = await _blueprint(hass)
+    controller.state.areas[16] = [128, 130, 8, 0]  # entry delay
+    await _bp_refresh(hass, entry)
+    assert sent[-1]["message"].startswith("Someone's come in.")
+    assert [a["title"] for a in sent[-1]["data"]["actions"]] == ["Disarm"]
     controller.state.areas[16] = [128, 128, 9, 0]  # armed, alarm
     await _bp_refresh(hass, entry)
     assert sent and sent[-1]["title"] == "ALARM"

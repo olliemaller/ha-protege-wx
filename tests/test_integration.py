@@ -186,6 +186,8 @@ async def test_devices_linked_to_controller(hass: HomeAssistant, controller) -> 
     kitchen = registry.async_get_device(identifiers={(DOMAIN, "A1B2C3D4_input_4")})
     assert hub is not None and kitchen is not None
     assert kitchen.via_device_id == hub.id and kitchen.name == "Kitchen"
+    assert hub.manufacturer == "Integrated Control Technology"
+    assert kitchen.manufacturer == "Arcnode IT" and kitchen.model == "Protege WX input"
 
 
 async def test_restricted_operator_still_works(hass: HomeAssistant, controller) -> None:

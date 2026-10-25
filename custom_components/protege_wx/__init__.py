@@ -22,7 +22,7 @@ from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
-from .const import CONF_PROTOCOL, DOMAIN, MANUFACTURER
+from .const import CONF_PROTOCOL, DOMAIN, INTEGRATION_AUTHOR
 from .coordinator import ProtegeCoordinator, ProtegeSite, async_discover
 from .entity import controller_device, controller_uid, object_identifier
 from .wxapi import (
@@ -155,16 +155,16 @@ def _register_devices(
         parent = {"via_device": next(iter(controller.identifiers))}
     site = coordinator.site
     for kind, model, objects in (
-        ("area", "Area", site.areas.values()),
-        ("door", "Door", site.doors.values()),
-        ("input", "Input", site.inputs.values()),
+        ("area", "Protege WX area", site.areas.values()),
+        ("door", "Protege WX door", site.doors.values()),
+        ("input", "Protege WX input", site.inputs.values()),
     ):
         for obj in objects:
             registry.async_get_or_create(
                 config_entry_id=entry.entry_id,
                 identifiers={object_identifier(coordinator, kind, obj.id)},
                 name=obj.name,
-                manufacturer=MANUFACTURER,
+                manufacturer=INTEGRATION_AUTHOR,
                 model=model,
                 **parent,
             )

@@ -5,6 +5,8 @@ from typing import Final
 
 DOMAIN: Final = "protege_wx"
 MANUFACTURER: Final = "Integrated Control Technology"
+# Areas, doors and inputs are devices this integration creates, not ICT hardware.
+INTEGRATION_AUTHOR: Final = "Arcnode IT"
 
 CONF_PROTOCOL: Final = "protocol"
 CONF_SERIAL: Final = "serial"

@@ -245,8 +245,8 @@ async def _detail(client: ProtegeClient, table: str, rec_id: int) -> dict[str, s
 
 
 # Field names the controller may use for an area's delays (seconds).
-_EXIT_DELAY_FIELDS = ("ExitDelay", "ExitDelayTime", "ExitTime", "AreaExitDelay")
-_ENTRY_DELAY_FIELDS = ("EntryDelay", "EntryDelayTime", "EntryTime", "AreaEntryDelay")
+_EXIT_DELAY_FIELDS = ("ExitTimeSeconds", "ExitDelay", "ExitDelayTime", "ExitTime", "AreaExitDelay")
+_ENTRY_DELAY_FIELDS = ("EntryTimeSeconds", "EntryDelay", "EntryDelayTime", "EntryTime", "AreaEntryDelay")
 
 
 def _seconds(detail: dict[str, str], fields: tuple[str, ...]) -> int | None:

@@ -209,7 +209,7 @@ class FakeController:
                     return f"InputId={rec}&Area1=2147483647&ZoneType1=2147483647"
                 return f"InputId={rec}&Area1=16&ZoneType1={ZONE_TYPES[rec]}&Area2=2147483647"
             if sub == "GXT_AREAS_TBL":
-                return f"AreaId={rec}&EnableStayArming=true&EnableInstantArming=true&ExitDelay={self.exit_delay}&EntryDelay={self.entry_delay}"
+                return f"AreaId={rec}&EnableStayArming=true&EnableInstantArming=true&ExitTimeSeconds={self.exit_delay}&EntryTimeSeconds={self.entry_delay}&AlternateEntryTime=60"
             if sub == "GXT_DOORS_TBL":
                 return f"DoorId={rec}&DoorPositionInput=2147483647"
             return ""

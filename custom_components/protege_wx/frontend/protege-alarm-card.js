@@ -13,7 +13,7 @@
  * device by itself. Ships with the integration; nothing to add to resources.
  */
 
-const VERSION = "0.3.1";
+const VERSION = "0.3.2";
 
 const FEATURE = { HOME: 1, AWAY: 2, NIGHT: 4, VACATION: 32 };
 

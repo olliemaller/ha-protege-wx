@@ -174,7 +174,15 @@ class ProtegeAlarmCard extends HTMLElement {
         .slice(-this._config.activity_count)
         .reverse();
       if (!this._activity.length) {
-        this._activity = entries.filter((e) => e.state).slice(-this._config.activity_count).reverse();
+        // No plain-English lines yet: fall back to real alarm states, skipping
+        // restarts (unknown / unavailable) and repeats.
+        const states = [];
+        for (const e of entries) {
+          if (!e.state || ["unknown", "unavailable"].includes(e.state)) continue;
+          if (states.length && states[states.length - 1].state === e.state) continue;
+          states.push(e);
+        }
+        this._activity = states.slice(-this._config.activity_count).reverse();
       }
     } catch (_err) {
       this._activity = [];

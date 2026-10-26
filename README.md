@@ -332,6 +332,8 @@ A controller whose session table filled with abandoned sessions has been seen to
 | **Can't connect** | Check you can open `http://<host>:<port>` in a browser on the same network as Home Assistant. |
 | **Away won't arm, Home works** | A zone is open (for example someone moving in a room). Check *Ready to arm* or the error message, or use **Force arm away**. |
 | **No "who did it"** | The operator needs permission to view the event log. Repairs will also tell you. |
+| **Alarm card shows "Configuration error"** | Update to 0.3.1 or later, restart Home Assistant, then refresh the browser or app (in the Companion app: Settings → Reset frontend cache). |
+| **No "Last seen" sensor for someone** | It's created the first time that person uses a card or PIN at a door after the integration is running. Entries read while Home Assistant was restarting don't count. |
 | **Something seems stuck** | Check the **Connection** sensor on the controller device: it shows whether the link is up, reconnecting or backing off to protect the controller. |
 | **Need help** | Download diagnostics from the integration's ⋮ menu. Passwords, PINs, serials and names in event lines are redacted. Attach it to an [issue](https://github.com/olliemaller/ha-protege-wx/issues). |
 

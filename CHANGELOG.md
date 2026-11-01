@@ -16,6 +16,7 @@
 
 **Fixed and tidied**
 
+- Assist's "Is the house armed?", "Can I arm?" and "Who came in last?" weren't understood on Home Assistant 2026.x, which changed how integrations add sentences. They work again.
 - Renaming an entity in Home Assistant 2026.11 updates it in place instead of removing and re-adding it. The Alarmo sync follows a renamed alarm panel.
 - In the hour the clocks go back, controller log lines were read as an hour old, so Activity added "(at ...)" to them and a few checks treated them as history. The repeated hour is now read correctly.
 

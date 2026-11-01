@@ -137,21 +137,32 @@ _ANSWERS = {"armed": answer_armed, "ready": answer_ready, "last_in": answer_last
 
 
 def _register(hass: HomeAssistant, sentences: list[str], handler) -> CALLBACK_TYPE | None:
-    """Register sentences with Assist, across Home Assistant versions."""
+    """Register sentences with Assist, across Home Assistant versions.
+
+    * 2026.x: agent_manager.register_trigger(sentences, callback)
+    * 2025.7 to 2025.12: agent_manager.register_trigger(TriggerDetails(...))
+    * before 2025.7: the default agent's register_trigger(sentences, callback)
+    """
     try:
         from homeassistant.components.conversation.agent_manager import (
             get_agent_manager,
         )
-        from homeassistant.components.conversation.trigger import TriggerDetails
-    except ImportError:  # before 2025.7: triggers lived on the default agent
-        try:
-            from homeassistant.components.conversation.const import DATA_DEFAULT_ENTITY
-
-            agent = hass.data.get(DATA_DEFAULT_ENTITY)
-            return agent.register_trigger(sentences, handler) if agent else None
-        except ImportError:
-            return None
-    return get_agent_manager(hass).register_trigger(TriggerDetails(sentences, handler))
+    except ImportError:
+        get_agent_manager = None
+    if get_agent_manager is not None:
+        manager = get_agent_manager(hass)
+        if hasattr(manager, "register_trigger"):
+            try:
+                from homeassistant.components.conversation.trigger import TriggerDetails
+            except ImportError:
+                return manager.register_trigger(sentences, handler)
+            return manager.register_trigger(TriggerDetails(sentences, handler))
+    try:
+        from homeassistant.components.conversation.const import DATA_DEFAULT_ENTITY
+    except ImportError:
+        return None
+    agent = hass.data.get(DATA_DEFAULT_ENTITY)
+    return agent.register_trigger(sentences, handler) if agent else None
 
 
 @callback

@@ -26,7 +26,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
 
-from .const import EVENT_ARM_WHEN_READY, EVENT_LOGBOOK
+from .const import DOMAIN, EVENT_ARM_WHEN_READY, EVENT_LOGBOOK
 
 if TYPE_CHECKING:
     from .alarm_control_panel import ProtegeArea
@@ -52,9 +52,12 @@ RESULT_ARMED = "armed"
 RESULT_TIMED_OUT = "timed_out"
 RESULT_CANCELLED = "cancelled"
 RESULT_FAILED = "failed"
+# Reported as RESULT_ARMED, with a different logbook line.
+RESULT_ARMED_ELSEWHERE = "armed_elsewhere"
 
 _MESSAGES = {
     RESULT_ARMED: "armed {mode} once every zone was closed",
+    RESULT_ARMED_ELSEWHERE: "stopped waiting: the area was armed another way",
     RESULT_TIMED_OUT: "gave up arming {mode} after {minutes} min; still open: {zones}",
     RESULT_CANCELLED: "stopped waiting to arm {mode}",
     RESULT_FAILED: "couldn't arm {mode}: {error}",
@@ -69,6 +72,9 @@ class _Wait:
     started_by: str | None
     refusals: int = 0
     busy: bool = False
+    # A cancel or time-out that arrived while an arm command was in flight;
+    # applied once that command's outcome is known.
+    pending: str | None = None
     cancel_timer: CALLBACK_TYPE | None = None
 
 
@@ -119,12 +125,18 @@ class ArmWhenReady:
 
     @callback
     def async_stop(self) -> None:
+        """Stop for an unload, reload or shutdown. Waits don't survive it, so
+        each one reports that it was cancelled rather than going quiet."""
         if self._remove:
             self._remove()
             self._remove = None
-        for wait in self._waits.values():
-            if wait.cancel_timer:
-                wait.cancel_timer()
+        runtime = getattr(self.coordinator.config_entry, "runtime_data", None)
+        for area_id in list(self._waits):
+            panel = runtime.areas.get(area_id) if runtime is not None else None
+            if panel is not None:
+                self._finish(panel, RESULT_CANCELLED, error="Home Assistant reloaded the integration", force=True)
+            else:
+                self._end(area_id)
         self._waits.clear()
 
     # ── starting and stopping ──────────────────────────────────────────────
@@ -139,6 +151,11 @@ class ArmWhenReady:
         status = self.coordinator.data.areas.get(area_id) if self.coordinator.data else None
         if status is not None and status.is_armed_or_arming:
             return  # already armed or arming: nothing to wait for
+        existing = self._waits.get(area_id)
+        if existing is not None and existing.busy:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="arm_when_ready_busy"
+            )
         self._end(area_id)  # a new request replaces an old one
         until = dt_util.utcnow() + timedelta(minutes=minutes)
         wait = _Wait(mode=mode, minutes=minutes, until=until, started_by=started_by)
@@ -163,6 +180,17 @@ class ArmWhenReady:
     def _ready(self, area_id: int, mode: str, panel: ProtegeArea) -> bool:
         stay = panel.controller_mode_for(mode) == "stay"
         coordinator = self.coordinator
+        status = coordinator.data.areas.get(area_id) if coordinator.data else None
+        if status is None or not status.known:
+            return False
+        # The panel's own word counts too: it may see an open zone Home
+        # Assistant doesn't map to the area, or be waiting on a bypass error
+        # or users still inside. (A Home arm can go ahead with only stay
+        # zones open, which the panel also reports as "zone open".)
+        if status.state in ("bypass_error", "user_count_not_zero"):
+            return False
+        if status.state == "zone_open" and not stay:
+            return False
         return coordinator.zones_known(area_id, stay=stay) and not coordinator.open_zones(
             area_id, stay=stay
         )
@@ -179,7 +207,7 @@ class ArmWhenReady:
                 continue
             if status.is_armed_or_arming and not wait.busy:
                 # Armed some other way (keypad, app): nothing left to do.
-                self._finish(panel, RESULT_ARMED)
+                self._finish(panel, RESULT_ARMED_ELSEWHERE)
                 continue
             if status.in_alarm:
                 self._finish(panel, RESULT_CANCELLED)
@@ -199,7 +227,11 @@ class ArmWhenReady:
         try:
             await panel.async_arm_mode(wait.mode)
         except HomeAssistantError as err:
+            wait.busy = False
             if self._waits.get(area_id) is not wait:
+                return
+            if wait.pending:  # cancelled or timed out while it was trying
+                self._finish(panel, wait.pending)
                 return
             if getattr(err, "translation_key", None) == "arm_unconfirmed":
                 return  # it may still arm; the next update decides
@@ -211,9 +243,12 @@ class ArmWhenReady:
                 self._finish(panel, RESULT_FAILED, error=str(err))
             # Otherwise a zone opened again in between: keep waiting.
             return
-        finally:
+        except BaseException:
             wait.busy = False
+            raise
+        wait.busy = False
         if self._waits.get(area_id) is wait:
+            # It armed: that's the outcome, even if a cancel came in meanwhile.
             self._finish(panel, RESULT_ARMED)
 
     # ── finishing ──────────────────────────────────────────────────────────
@@ -227,14 +262,27 @@ class ArmWhenReady:
         return wait
 
     @callback
-    def _finish(self, panel: ProtegeArea, result: str, *, error: str | None = None) -> None:
+    def _finish(
+        self, panel: ProtegeArea, result: str, *, error: str | None = None, force: bool = False
+    ) -> None:
+        current = self._waits.get(panel.rec_id)
+        if current is not None and current.busy and not force and result in (
+            RESULT_CANCELLED,
+            RESULT_TIMED_OUT,
+        ):
+            # An arm command is in flight: let its outcome decide.
+            current.pending = result
+            return
         wait = self._end(panel.rec_id)
         if wait is None:
             return
         self._notify()
+        logged = result
+        if result == RESULT_ARMED_ELSEWHERE:
+            result = RESULT_ARMED
         stay = panel.controller_mode_for(wait.mode) == "stay"
         zones = self.coordinator.open_zones(panel.rec_id, stay=stay) if result == RESULT_TIMED_OUT else []
-        message = _MESSAGES[result].format(
+        message = _MESSAGES[logged].format(
             mode=wait.mode,
             minutes=wait.minutes,
             zones=", ".join(zones) or "none",
@@ -248,6 +296,7 @@ class ArmWhenReady:
                 "area": panel.area.name,
                 "mode": wait.mode,
                 "result": result,
+                "armed_elsewhere": logged == RESULT_ARMED_ELSEWHERE,
                 "open_zones": zones,
                 "error": error,
             },

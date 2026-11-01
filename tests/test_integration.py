@@ -2136,3 +2136,60 @@ async def test_outputs_are_child_devices(hass: HomeAssistant, controller) -> Non
     assert output.name == "Garage Door Open/Close" and output.model == "Protege WX output"
     state = hass.states.get("switch.garage_door_open_close")
     assert state is not None and state.name == "Garage Door Open/Close"
+
+
+# ── review fixes for arm when ready ────────────────────────────────────────
+
+
+async def test_arm_when_ready_switch_refuses_without_pin(hass: HomeAssistant, controller) -> None:
+    from homeassistant.helpers import entity_registry as er_
+
+    entry = _entry(controller, users=[make_user("Jane", "1234")])
+    await _setup(hass, entry)
+    assert er_.async_get(hass).async_get(WAIT_SWITCH).entity_category == "config"
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    assert err.value.translation_key == "arm_when_ready_needs_pin"
+    assert _state(hass, ALARM) == "disarmed"
+
+
+async def test_arm_when_ready_reload_reports_cancelled(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    results = async_capture_events(hass, "protege_wx_arm_when_ready")
+    controller.open_input(5)
+    await _refresh(hass, entry)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert results and results[-1].data["result"] == "cancelled"
+    assert _state(hass, WAIT_SWITCH) == "off"
+
+
+async def test_arm_when_ready_waits_while_panel_not_ready(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.state.areas[16][1] = 5  # users still inside: the panel won't arm
+    await _refresh(hass, entry)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    await _refresh(hass, entry)
+    assert _state(hass, WAIT_SWITCH) == "on"
+    assert not [c for c in controller.state.commands if "Command=3" in c or "Command=5" in c]
+    controller.state.areas[16][1] = 0
+    await _refresh(hass, entry)
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "armed_away"
+
+
+async def test_arm_when_ready_armed_elsewhere_is_flagged(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    results = async_capture_events(hass, "protege_wx_arm_when_ready")
+    controller.open_input(5)
+    await _refresh(hass, entry)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    await hass.services.async_call(
+        DOMAIN, "arm", {"entity_id": ALARM, "mode": "away", "force": True}, blocking=True
+    )
+    await _refresh(hass, entry)
+    assert results[-1].data["result"] == "armed" and results[-1].data["armed_elsewhere"] is True

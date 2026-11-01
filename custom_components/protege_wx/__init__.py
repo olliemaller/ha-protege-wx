@@ -216,6 +216,9 @@ async def _async_reload_on_options(hass: HomeAssistant, entry: ProtegeConfigEntr
 
 async def async_unload_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> bool:
     """Unload a config entry; the session is logged out by the unload hooks."""
+    # Stop "arm when ready" first, so nothing arms while the panels go away.
+    if entry.runtime_data.arm_when_ready is not None:
+        entry.runtime_data.arm_when_ready.async_stop()
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         entry.runtime_data.coordinator.async_clear_issues()

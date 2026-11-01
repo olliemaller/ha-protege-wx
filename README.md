@@ -298,7 +298,10 @@ Each area has an **Arm when ready** switch and an **Arm when ready mode** select
 - Turn the switch on and the area arms straight away if every zone is closed, or the moment the last one closes.
 - It turns itself off when the area arms, whoever arms it.
 - It gives up after the time limit in the options (30 minutes unless changed) and says which zones were still open.
-- Turn it off to stop waiting. A restart also stops it, so the house never arms long after someone expected.
+- Turn it off to stop waiting. A restart or reload also stops it (and says so), so the house never arms long after someone expected.
+- It also waits while the panel itself isn't ready (for example a bypass error, or users still inside).
+- When arming needs a PIN, the switch won't turn on by itself: use the alarm card's **Arm when ready** button (it asks for the PIN) or the action below with a `code`.
+- The switch is a configuration entity, so voice assistants don't get it by default and turning on a whole area or device never arms the alarm.
 
 Every result fires a `protege_wx_arm_when_ready` event (`result`: `armed`, `timed_out`, `cancelled` or `failed`) and writes a line in Activity.
 

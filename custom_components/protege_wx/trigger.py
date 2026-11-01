@@ -123,8 +123,8 @@ if SUPPORTED:
                     return
                 if new.state in (STATE_UNAVAILABLE, STATE_UNKNOWN) or old.state == STATE_UNAVAILABLE:
                     return
-                if new.state == old.state:
-                    return  # an attribute update, not a new event
+                if new.state == old.state and new.attributes == old.attributes:
+                    return  # nothing new (two events in the same instant differ in attributes)
                 attributes = dict(new.attributes)
                 if not self.matches(attributes.get("event_type"), attributes):
                     return

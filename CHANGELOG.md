@@ -10,7 +10,7 @@
 
 **New**
 
-- **Arm when ready.** Each area has an **Arm when ready** switch and a mode select (Away, Home or Night). The area arms the moment every zone closes, or gives up after 30 minutes (set in the options) and says what was still open. Turn the switch off to stop. Also the `protege_wx.arm_when_ready` action, which takes a PIN like arming does.
+- **Arm when ready.** Each area has an **Arm when ready** switch and a mode select (Away, Home or Night), both under the area's configuration. The area arms the moment every zone closes and the panel says it's ready, or gives up after 30 minutes (set in the options) and says what was still open. Turn the switch off to stop. When arming needs a PIN, the switch refuses: use the alarm card's button or the `protege_wx.arm_when_ready` action with a code. Voice assistants don't get the switch by default, and turning on a whole area or device never arms the alarm. A reload or restart stops a wait and says so.
 - **Automation triggers and conditions** in the automation editor (Home Assistant 2026.10+): Access granted (optionally only certain people, card or PIN), Access denied, Door forced or left open, Area failed to arm, and Duress, panic or medical alarm; and the condition Area is ready to arm.
 - **Home Assistant Marketplace ready** (2026.11): manifest categories, the HACS action passing with no ignored checks, and these notes shown in **Settings** > **Updates**.
 

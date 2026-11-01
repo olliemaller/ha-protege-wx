@@ -218,6 +218,9 @@ class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
     """
 
     _attr_translation_key = "arm_when_ready"
+    # A config entity: voice assistants don't get it by default, and turning
+    # on a whole area or device (or a scene) doesn't arm the alarm.
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo) -> None:
         super().__init__(coordinator, "area", area.id, key="arm_when_ready", own_device=True)
@@ -239,7 +242,8 @@ class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
         details = self._waits.details(self.rec_id)
         if not details:
             return {"mode": self._waits.preferred.get(self.rec_id, "away")}
-        stay = details["mode"] == "home"
+        panel = self.coordinator.config_entry.runtime_data.areas.get(self.rec_id)
+        stay = panel is not None and panel.controller_mode_for(details["mode"]) == "stay"
         details["open_zones"] = self.coordinator.open_zones(self.rec_id, stay=stay)
         return details
 
@@ -250,10 +254,23 @@ class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
         return panel
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        # No PIN can be entered on a switch: like the force-arm buttons, it
-        # only ever arms, never disarms.
+        # A switch can't carry a PIN: when arming needs one, use the
+        # protege_wx.arm_when_ready action (the alarm card does) instead.
+        codes = self.coordinator.codes
+        if codes.enabled and codes.arm_requires_code:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="arm_when_ready_needs_pin"
+            )
         mode = self._waits.preferred.get(self.rec_id, "away")
-        await self._panel().async_begin_arm_when_ready(mode)
+        await self._panel().async_begin_arm_when_ready(mode, user=await self._user_name())
+
+    async def _user_name(self) -> str | None:
+        """The Home Assistant user who turned it on, to credit the arm to."""
+        user_id = self._context.user_id if self._context else None
+        if not user_id:
+            return None
+        user = await self.hass.auth.async_get_user(user_id)
+        return user.name if user else None
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         self._waits.async_cancel(self._panel())

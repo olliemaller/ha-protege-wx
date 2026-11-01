@@ -480,6 +480,12 @@
     },
     "area_not_ready": {
       "message": "This area isn't set up yet. Try again in a moment."
+    },
+    "arm_when_ready_needs_pin": {
+      "message": "Arming needs a PIN. Use the alarm card's Arm when ready button, or the protege_wx.arm_when_ready action with a code."
+    },
+    "arm_when_ready_busy": {
+      "message": "The area is being armed right now. Try again in a moment."
     }
   },
   "services": {

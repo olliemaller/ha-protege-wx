@@ -220,11 +220,29 @@ class ProtegeAlarmCard extends HTMLElement {
   async _wait(on) {
     const id = this._related("arm_when_ready", "switch");
     if (!id) return;
+    const alarm = this._hass.states[this._config.entity];
+    const needsCode = on && alarm.attributes.code_format && alarm.attributes.code_arm_required !== false;
+    if (needsCode && !this._code) {
+      this._error = "Enter your PIN first";
+      this._render();
+      return;
+    }
     this._busy = true;
     this._error = "";
     this._render();
     try {
-      await this._hass.callService("switch", on ? "turn_on" : "turn_off", { entity_id: id });
+      if (needsCode) {
+        // The switch can't take a PIN, so arm through the action instead.
+        const mode = this._hass.states[id]?.attributes?.mode || "away";
+        await this._hass.callService("protege_wx", "arm_when_ready", {
+          entity_id: this._config.entity,
+          mode,
+          code: this._code,
+        });
+        this._code = "";
+      } else {
+        await this._hass.callService("switch", on ? "turn_on" : "turn_off", { entity_id: id });
+      }
     } catch (err) {
       this._error = err?.message || String(err);
     }

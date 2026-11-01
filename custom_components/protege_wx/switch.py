@@ -41,6 +41,11 @@ async def async_setup_entry(
         if area.has_inputs is not False
     ]
     entities += [
+        ProtegeArmWhenReadySwitch(data.coordinator, area)
+        for area in data.site.areas.values()
+        if area.has_inputs is not False
+    ]
+    entities += [
         ProtegeOutputSwitch(data.coordinator, rec_id, name)
         for rec_id, name in data.site.outputs.items()
         if rec_id in chosen
@@ -105,11 +110,13 @@ class ProtegeHoldOpenSwitch(ProtegeEntity, SwitchEntity):
 
 
 class ProtegeOutputSwitch(ProtegeEntity, SwitchEntity):
-    """A Protege output."""
+    """A Protege output, as the main entity of its own device (a child of the
+    controller), so it takes the output's name and can be given its own area."""
+
+    _attr_name = None
 
     def __init__(self, coordinator: ProtegeCoordinator, rec_id: int, name: str) -> None:
-        super().__init__(coordinator, "output", rec_id)
-        self._attr_name = name
+        super().__init__(coordinator, "output", rec_id, own_device=True)
 
     @property
     def _status(self):
@@ -192,6 +199,64 @@ class ProtegeWalkTestSwitch(ProtegeEntity, SwitchEntity):
         await self._command(self.coordinator.client.walk_test(self.rec_id, False))
         self._attr_is_on = False
         self.async_write_ha_state()
+
+    async def async_service_pulse(self, seconds: int) -> None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="not_an_output",
+            translation_placeholders={"entity": self.entity_id},
+        )
+
+
+class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
+    """On while the area waits for its zones to close before arming.
+
+    Turning it on arms straight away if the area is ready, otherwise as soon as
+    it is, in the mode chosen on the area's "Arm when ready mode" select.
+    Turning it off stops waiting. It turns itself off when the area arms or
+    the time limit runs out.
+    """
+
+    _attr_translation_key = "arm_when_ready"
+
+    def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo) -> None:
+        super().__init__(coordinator, "area", area.id, key="arm_when_ready", own_device=True)
+
+    @property
+    def _waits(self):
+        return self.coordinator.config_entry.runtime_data.arm_when_ready
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._waits.async_add_listener(self.async_write_ha_state))
+
+    @property
+    def is_on(self) -> bool:
+        return self._waits.waiting(self.rec_id)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        details = self._waits.details(self.rec_id)
+        if not details:
+            return {"mode": self._waits.preferred.get(self.rec_id, "away")}
+        stay = details["mode"] == "home"
+        details["open_zones"] = self.coordinator.open_zones(self.rec_id, stay=stay)
+        return details
+
+    def _panel(self):
+        panel = self.coordinator.config_entry.runtime_data.areas.get(self.rec_id)
+        if panel is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="area_not_ready")
+        return panel
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        # No PIN can be entered on a switch: like the force-arm buttons, it
+        # only ever arms, never disarms.
+        mode = self._waits.preferred.get(self.rec_id, "away")
+        await self._panel().async_begin_arm_when_ready(mode)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        self._waits.async_cancel(self._panel())
 
     async def async_service_pulse(self, seconds: int) -> None:
         raise ServiceValidationError(

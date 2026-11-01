@@ -22,6 +22,32 @@ arm:
         text:
           type: password
 
+arm_when_ready:
+  target:
+    entity:
+      integration: protege_wx
+      domain: alarm_control_panel
+  fields:
+    mode:
+      default: away
+      selector:
+        select:
+          translation_key: wait_mode
+          options:
+            - away
+            - home
+            - night
+    minutes:
+      selector:
+        number:
+          min: 1
+          max: 240
+          unit_of_measurement: min
+    code:
+      selector:
+        text:
+          type: password
+
 unlock_door:
   target:
     entity:

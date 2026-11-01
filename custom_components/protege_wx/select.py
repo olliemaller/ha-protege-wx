@@ -4,10 +4,13 @@ from __future__ import annotations
 from homeassistant.components.select import SelectEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import ProtegeConfigEntry
+from .arm_when_ready import night_mode_for
 from .compat import AddConfigEntryEntitiesCallback
-from .coordinator import InputInfo, ProtegeCoordinator
+from .const import OPT_NIGHT_MODE
+from .coordinator import AreaInfo, InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 
 PARALLEL_UPDATES = 1
@@ -21,9 +24,20 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     data = entry.runtime_data
-    async_add_entities(
+    night_modes: dict[str, str] = entry.options.get(OPT_NIGHT_MODE, {})
+    entities: list[SelectEntity] = [
         ProtegeBypassSelect(data.coordinator, info) for info in data.site.inputs.values()
-    )
+    ]
+    entities += [
+        ProtegeArmWhenReadyModeSelect(
+            data.coordinator,
+            area,
+            night_mode_for(area, night_modes.get(str(area.id), "instant")),
+        )
+        for area in data.site.areas.values()
+        if area.has_inputs is not False
+    ]
+    async_add_entities(entities)
 
 
 class ProtegeBypassSelect(ProtegeEntity, SelectEntity):
@@ -54,3 +68,36 @@ class ProtegeBypassSelect(ProtegeEntity, SelectEntity):
         # No PIN can be entered here: with PINs set up, only while disarmed.
         await self.coordinator.async_authorise_bypass(self.rec_id, None)
         await self._command(self.coordinator.client.set_bypass(self.rec_id, option))
+
+
+class ProtegeArmWhenReadyModeSelect(ProtegeEntity, SelectEntity, RestoreEntity):
+    """The mode the area's "Arm when ready" switch arms in."""
+
+    _attr_translation_key = "arm_when_ready_mode"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo, night_mode: str) -> None:
+        super().__init__(coordinator, "area", area.id, key="arm_when_ready_mode", own_device=True)
+        options = ["away"]
+        if area.stay_enabled:
+            options.append("home")
+        if night_mode != "off":
+            options.append("night")
+        self._attr_options = options
+        self._attr_current_option = "away"
+
+    @property
+    def _waits(self):
+        return self.coordinator.config_entry.runtime_data.arm_when_ready
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state in self.options:
+            self._attr_current_option = last.state
+        self._waits.preferred[self.rec_id] = self._attr_current_option
+
+    async def async_select_option(self, option: str) -> None:
+        self._attr_current_option = option
+        self._waits.preferred[self.rec_id] = option
+        self.async_write_ha_state()

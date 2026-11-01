@@ -46,11 +46,20 @@
       },
       "walk_test": {
         "default": "mdi:walk"
+      },
+      "arm_when_ready": {
+        "default": "mdi:shield-sync",
+        "state": {
+          "off": "mdi:shield-sync-outline"
+        }
       }
     },
     "select": {
       "bypass": {
         "default": "mdi:shield-off-outline"
+      },
+      "arm_when_ready_mode": {
+        "default": "mdi:shield-star"
       }
     },
     "sensor": {
@@ -100,6 +109,31 @@
     },
     "visitor_unlock": {
       "service": "mdi:account-clock"
+    },
+    "arm_when_ready": {
+      "service": "mdi:shield-sync"
+    }
+  },
+  "triggers": {
+    "access_granted": {
+      "trigger": "mdi:account-key"
+    },
+    "access_denied": {
+      "trigger": "mdi:account-cancel"
+    },
+    "door_alert": {
+      "trigger": "mdi:door-open"
+    },
+    "failed_to_arm": {
+      "trigger": "mdi:shield-alert"
+    },
+    "emergency": {
+      "trigger": "mdi:alarm-light"
+    }
+  },
+  "conditions": {
+    "ready_to_arm": {
+      "condition": "mdi:shield-check"
     }
   }
 }

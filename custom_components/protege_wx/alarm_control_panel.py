@@ -18,8 +18,16 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import ProtegeConfigEntry
+from .arm_when_ready import MODES as WAIT_MODES
+from .arm_when_ready import night_mode_for
 from .compat import AddConfigEntryEntitiesCallback
-from .const import DOMAIN, OPT_NIGHT_MODE, OPT_SHOW_ARMING
+from .const import (
+    DEFAULT_ARM_WHEN_READY_MINUTES,
+    DOMAIN,
+    OPT_ARM_WHEN_READY_MINUTES,
+    OPT_NIGHT_MODE,
+    OPT_SHOW_ARMING,
+)
 from .coordinator import ARM_FAILED, ARM_OK, AreaInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 from .users import UserCodes
@@ -28,6 +36,7 @@ from .wxapi.events import KIND_AREA, ParsedEvent
 PARALLEL_UPDATES = 1
 
 SERVICE_ARM = "arm"
+SERVICE_ARM_WHEN_READY = "arm_when_ready"
 ARM_MODES = ("away", "stay", "instant")
 # A Home Assistant user is credited for controller events within this window.
 _ACTOR_WINDOW = 15.0
@@ -61,6 +70,15 @@ async def async_setup_entry(
         },
         "async_service_arm",
     )
+    platform.async_register_entity_service(
+        SERVICE_ARM_WHEN_READY,
+        {
+            vol.Optional("mode", default="away"): vol.In(WAIT_MODES),
+            vol.Optional("minutes"): vol.All(vol.Coerce(int), vol.Range(min=1, max=240)),
+            vol.Optional("code"): cv.string,
+        },
+        "async_service_arm_when_ready",
+    )
 
 
 class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
@@ -81,11 +99,7 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
         self._codes = codes
         self._show_arming = show_arming
         # What Home Assistant's "Night" arms on the controller: instant, stay or nothing.
-        if night_mode == "stay" and not area.stay_enabled:
-            night_mode = "off"
-        if night_mode == "instant" and not area.instant_enabled:
-            night_mode = "off"
-        self.night_mode = night_mode
+        self.night_mode = night_mode_for(area, night_mode)
         # The Home Assistant mode last asked for (night, vacation), shown while
         # the controller is armed in the matching controller mode.
         self._requested: tuple[str, AlarmControlPanelState] | None = None
@@ -124,6 +138,17 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
         if last is not None:
             self._changed_by = self._credit(last)
         self.async_on_remove(self.coordinator.async_add_event_listener(self._on_event))
+
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Home Assistant 2026.11+: renamed in place. The Alarmo sync follows
+        this panel by entity ID, so point it at the new one."""
+        parent_hook = getattr(super(), "async_entity_id_changed", None)
+        if parent_hook is not None:
+            parent_hook(old_entity_id)
+        runtime = getattr(self.coordinator.config_entry, "runtime_data", None)
+        if runtime is not None and runtime.alarmo is not None:
+            self.hass.loop.call_soon(runtime.alarmo.async_restart)
 
     def _credit(self, parsed: ParsedEvent) -> str | None:
         """Who to show as having changed the area. Actions by this integration's
@@ -343,6 +368,55 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
             await self._arm("away", False, None, as_state=AlarmControlPanelState.ARMED_VACATION, authorise=False)
         else:
             await self._arm("away", False, None, authorise=False)
+
+    # ── arm when ready ─────────────────────────────────────────────────────
+
+    def controller_mode_for(self, mode: str) -> str:
+        """away / home / night -> the controller mode it arms (away, stay, instant)."""
+        if mode == "home":
+            return "stay"
+        if mode == "night":
+            return self.night_mode
+        return "away"
+
+    def check_mode_available(self, mode: str) -> None:
+        if mode == "home" and not self.area.stay_enabled:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="stay_off")
+        if mode == "night" and self.night_mode == "off":
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="night_off")
+
+    async def async_arm_mode(self, mode: str) -> None:
+        """Arm in a Home Assistant mode, already authorised (arm when ready)."""
+        self.check_mode_available(mode)
+        if mode == "night":
+            await self._arm(
+                self.night_mode, False, None,
+                as_state=AlarmControlPanelState.ARMED_NIGHT, authorise=False,
+            )
+        else:
+            await self._arm(self.controller_mode_for(mode), False, None, authorise=False)
+
+    async def async_service_arm_when_ready(
+        self, mode: str = "away", minutes: int | None = None, code: str | None = None
+    ) -> None:
+        """The protege_wx.arm_when_ready action."""
+        user = await self._authorise(code, "arm")
+        await self.async_begin_arm_when_ready(mode, minutes, user)
+
+    async def async_begin_arm_when_ready(
+        self, mode: str, minutes: int | None = None, user: str | None = None
+    ) -> None:
+        if minutes is None:
+            minutes = int(
+                self.coordinator.config_entry.options.get(
+                    OPT_ARM_WHEN_READY_MINUTES, DEFAULT_ARM_WHEN_READY_MINUTES
+                )
+            )
+        if user:
+            self.coordinator.ha_actor[self.rec_id] = (user, time.monotonic())
+        await self.coordinator.config_entry.runtime_data.arm_when_ready.async_begin(
+            self, mode, minutes, user
+        )
 
     async def async_silence(self) -> None:
         await self._command(self.coordinator.client.silence_area(self.rec_id))

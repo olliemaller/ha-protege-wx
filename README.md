@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-185FA5?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white&labelColor=042C53" alt="HACS Custom"></a>
-  <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Release"></a>
-  <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=042C53" alt="Checks"></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=042C53" alt="Home Assistant 2025.1+">
-  <a href="https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=042C53" alt="Licence"></a>
+  <a href="https://www.home-assistant.io/integrations/marketplace/"><img src="https://img.shields.io/badge/Marketplace-Custom-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=0A0A0F" alt="Home Assistant Marketplace"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=0A0A0F" alt="Release"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=0A0A0F" alt="Checks"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=0A0A0F" alt="Home Assistant 2025.1+">
+  <a href="https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=0A0A0F" alt="Licence"></a>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=olliemaller&repository=ha-protege-wx&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=olliemaller&repository=ha-protege-wx&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in the Marketplace"></a>
   &nbsp;
   <a href="https://my.home-assistant.io/redirect/config_flow_start/?domain=protege_wx"><img src="https://my.home-assistant.io/badges/config_flow_start.svg" alt="Add integration"></a>
 </p>
@@ -44,7 +44,9 @@ Every WX does have a **web interface**. This integration speaks the same encrypt
 | Feature | What it does |
 |---|---|
 | **Alarm panel** | Arm Away, Home (stay), Night (you choose what it does) and Holidays, and disarm. Correct modes in Apple Home, even during the exit delay. |
-| **Alarm card** | A keypad card with the exit/entry countdown, open zones, what set the alarm off and recent activity. Ships with the integration. |
+| **Alarm card** | A keypad card with the exit/entry countdown, open zones, what set the alarm off, "Arm when ready" and recent activity. Set it up in the visual card editor. Ships with the integration. |
+| **Arm when ready** | Turn it on while a window is still being shut: the area arms the moment every zone closes, or gives up after 30 minutes. Turn it off to stop. |
+| **Automation building blocks** | Ready-made triggers ("Access granted", "Door forced or left open", "Area failed to arm", "Duress, panic or medical alarm") and an "Area is ready to arm" condition in the automation editor (Home Assistant 2026.10 and later). |
 | **Ask Assist** | "Is the house armed?", "Can I arm?", "Who came in last?" |
 | **Fast** | Updates about every second, driven by the controller's event log. |
 | **Who did it** | Shows which keypad user, card, PIN or Home Assistant user armed, disarmed or opened a door. |
@@ -140,19 +142,31 @@ Tested on one controller so far. Please [open an issue](https://github.com/ollie
 
 ## Installation
 
-### HACS (recommended)
+### Marketplace (Home Assistant 2026.11 and later)
 
-[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=olliemaller&repository=ha-protege-wx&category=integration)
+[![Open this repository in the Home Assistant Marketplace.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=olliemaller&repository=ha-protege-wx&category=integration)
 
-1. Click the button above, or in **HACS** open the ⋮ menu → **Custom repositories**, add `https://github.com/olliemaller/ha-protege-wx` and choose type **Integration**.
+1. Select the button above. Or go to **Settings** > **Marketplace**, select **Add from link**, enter `olliemaller/ha-protege-wx` and select **Add**. Adding from a link needs GitHub connected; the Marketplace asks for it.
+2. Open **ICT Protege WX** and select **Install**.
+3. The setup opens straight away. No restart is needed for a first install.
+
+Updates appear under **Settings** > **Updates** with the release notes. After an update, the repair under **Settings** > **System** > **Repairs** restarts Home Assistant for you. To try pre-releases, turn on the repository's **Pre-release** switch on its Marketplace device page.
+
+### HACS (Home Assistant 2025.1 to 2026.10)
+
+1. Select the button above, or in **HACS** open the ⋮ menu → **Custom repositories**, add `https://github.com/olliemaller/ha-protege-wx` and choose type **Integration**.
 2. Download **ICT Protege WX**.
 3. Restart Home Assistant.
+
+Updating Home Assistant to 2026.11 moves this to the Marketplace automatically. It stays installed and keeps getting updates.
 
 ### Manual
 
 1. Download `protege_wx.zip` from the [latest release](https://github.com/olliemaller/ha-protege-wx/releases/latest).
 2. Unzip it into `config/custom_components/protege_wx/`.
 3. Restart Home Assistant.
+
+[![Open your Home Assistant instance and start setting up ICT Protege WX.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=protege_wx)
 
 ## Setup
 
@@ -227,7 +241,7 @@ For most homes, the Protege panel and PINs on their own are enough.
 
 ## Alarm card
 
-<img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/alarm-card.png" alt="Alarm card: disarmed with open zones, exit delay countdown, and an alarm" width="100%">
+<img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/alarm-card.png" alt="Alarm card: disarmed with open zones and an Arm when ready button, waiting to arm, and armed away" width="100%">
 
 The integration adds a dashboard card. There's nothing to download or add to resources:
 
@@ -239,9 +253,12 @@ name: House
 show_keypad: true     # when a PIN is needed
 show_activity: true   # recent arming, disarming and doors
 activity_count: 5
+show_arm_when_ready: true  # "Arm when ready" while zones are open
 ```
 
-It finds the area's open-zones, delay and alarm-cause sensors by itself, and follows your light or dark theme.
+Every option is also in the visual card editor: add a card, search for **Protege WX alarm**, and pick the area.
+
+It finds the area's open-zones, delay, alarm-cause and arm-when-ready entities by itself, and follows your light or dark theme.
 
 ## Voice (Assist)
 
@@ -258,6 +275,7 @@ Ask Assist, in English:
 | Action | Target | What it does |
 |---|---|---|
 | `protege_wx.arm` | alarm panel | Arm in `away`, `stay` or `instant` mode, optionally with `force` and a `code` |
+| `protege_wx.arm_when_ready` | alarm panel | Arm in `away`, `home` or `night` as soon as every zone is closed. Gives up after `minutes` (default from the options). Takes a `code` like arming does |
 | `protege_wx.unlock_door` | lock | Timed unlock, or `hold_open: true` to latch |
 | `protege_wx.visitor_unlock` | lock | Hold unlocked for `minutes` (default from the options), then lock |
 | `protege_wx.bypass` | zone sensor | `none`, `temporary` (until disarmed) or `permanent` |
@@ -273,6 +291,62 @@ data:
   force: true
 ```
 
+## Arm when ready
+
+Each area has an **Arm when ready** switch and an **Arm when ready mode** select (Away, Home or Night).
+
+- Turn the switch on and the area arms straight away if every zone is closed, or the moment the last one closes.
+- It turns itself off when the area arms, whoever arms it.
+- It gives up after the time limit in the options (30 minutes unless changed) and says which zones were still open.
+- Turn it off to stop waiting. A restart also stops it, so the house never arms long after someone expected.
+
+Every result fires a `protege_wx_arm_when_ready` event (`result`: `armed`, `timed_out`, `cancelled` or `failed`) and writes a line in Activity.
+
+```yaml
+# Arm away when the last window is shut, as long as that's within 10 minutes
+action: protege_wx.arm_when_ready
+target:
+  entity_id: alarm_control_panel.alarm
+data:
+  mode: away
+  minutes: 10
+```
+
+## Automation triggers and conditions
+
+On Home Assistant 2026.10 and later, the automation editor lists these under **Protege WX**. Pick doors, areas or the controller by device, area or entity.
+
+| Trigger | Fires when | Options |
+|---|---|---|
+| **Access granted** | someone badges in at the door | only certain people; card or PIN |
+| **Access denied** | a card or PIN is refused | |
+| **Door forced or left open** | the door is forced or left open | which alerts |
+| **Area failed to arm** | the area refuses to arm | |
+| **Duress, panic or medical alarm** | the controller logs one | which types |
+
+| Condition | True when |
+|---|---|
+| **Area is ready to arm** | every chosen area could arm now in Away, or in Home (which ignores the zones that only arm when away) |
+
+```yaml
+# Welcome home: turn the lights on when Jane badges in after dark
+triggers:
+  - trigger: protege_wx.access_granted
+    target:
+      entity_id: event.front_door_events
+    options:
+      people: [Jane Citizen]
+conditions:
+  - condition: sun
+    after: sunset
+actions:
+  - action: light.turn_on
+    target:
+      area_id: hallway
+```
+
+The trigger variables include `user`, `method` (`card` or `pin`), `event_type`, `subject` (the door or area) and `text` (the controller's own line).
+
 ## Events and automations
 
 | Event | When |
@@ -281,7 +355,7 @@ data:
 | `protege_wx_failed_to_arm` | An arm attempt fails. Includes `area` and the `zones` that stopped it |
 | `protege_wx_emergency` | A duress, panic or medical alarm: `type`, `area`, `by`, `text` |
 
-The area, door and controller **event entities** carry the same information for the automation editor.
+The area, door and controller **event entities** carry the same information, and work on every supported version.
 
 ```yaml
 # Tell me who's at the front door

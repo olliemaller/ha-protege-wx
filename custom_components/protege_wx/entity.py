@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable
 
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -41,10 +42,35 @@ def controller_device(coordinator: ProtegeCoordinator) -> DeviceInfo:
     )
 
 
+def _entity_id_changed_hook(owner: type):
+    """A pass-through async_entity_id_changed bound to one class, so each
+    class in a hierarchy hands on to the next one up exactly once."""
+
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        parent_hook = getattr(super(owner, self), "async_entity_id_changed", None)
+        if parent_hook is not None:
+            parent_hook(old_entity_id)
+
+    return async_entity_id_changed
+
+
 class ProtegeEntity(CoordinatorEntity[ProtegeCoordinator]):
     """An entity attached to the controller or to one area, door or input."""
 
     _attr_has_entity_name = True
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        """Opt every entity class in to in-place entity ID changes.
+
+        From Home Assistant 2026.11 an entity whose ID is renamed is updated in
+        place, but only for classes (with their own add/remove hooks) that
+        define async_entity_id_changed themselves. Nothing here is keyed on an
+        entity's own ID, so a pass-through is all each class needs.
+        """
+        super().__init_subclass__(**kwargs)
+        if "async_entity_id_changed" not in cls.__dict__:
+            cls.async_entity_id_changed = _entity_id_changed_hook(cls)  # type: ignore[attr-defined]
 
     def __init__(
         self,

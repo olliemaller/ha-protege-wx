@@ -25,6 +25,9 @@ OPT_DELAYS: Final = "delays"  # {"16": {"exit": 60, "entry": 45}}
 # Doors
 OPT_VISITOR_MINUTES: Final = "visitor_minutes"
 DEFAULT_VISITOR_MINUTES: Final = 15
+# Arm when ready: how long to wait for the zones to close
+OPT_ARM_WHEN_READY_MINUTES: Final = "arm_when_ready_minutes"
+DEFAULT_ARM_WHEN_READY_MINUTES: Final = 30
 # Alarmo two-way sync
 OPT_ALARMO_ENTITY: Final = "alarmo_entity"
 OPT_ALARMO_AREA: Final = "alarmo_area"
@@ -54,6 +57,7 @@ EVENT_HISTORY: Final = 50
 EVENT_FAILED_TO_ARM: Final = "protege_wx_failed_to_arm"
 EVENT_LOG: Final = "protege_wx_event"
 EVENT_EMERGENCY: Final = "protege_wx_emergency"
+EVENT_ARM_WHEN_READY: Final = "protege_wx_arm_when_ready"
 # Logbook-only: carries a ready-made sentence; not meant for automations.
 EVENT_LOGBOOK: Final = "protege_wx_logbook"
 

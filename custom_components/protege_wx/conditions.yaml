@@ -1,0 +1,14 @@
+ready_to_arm:
+  target:
+    entity:
+      integration: protege_wx
+      domain: alarm_control_panel
+  fields:
+    mode:
+      default: away
+      selector:
+        select:
+          translation_key: ready_mode
+          options:
+            - away
+            - home

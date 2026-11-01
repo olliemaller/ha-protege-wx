@@ -23,6 +23,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
 from .alarmo import AlarmoSync
+from .arm_when_ready import ArmWhenReady
 from .card import async_register_card
 from .const import (
     CONF_PROTOCOL,
@@ -30,6 +31,7 @@ from .const import (
     INTEGRATION_AUTHOR,
     OPT_ALARMO_AREA,
     OPT_ALARMO_ENTITY,
+    OPT_OUTPUTS,
 )
 from .coordinator import ProtegeCoordinator, ProtegeSite, async_discover
 from .entity import controller_device, controller_uid, object_identifier
@@ -68,6 +70,8 @@ class ProtegeRuntimeData:
     coordinator: ProtegeCoordinator
     site: ProtegeSite
     visitors: VisitorUnlocks | None = None
+    alarmo: AlarmoSync | None = None
+    arm_when_ready: ArmWhenReady | None = None
     areas: dict[int, ProtegeArea] = field(default_factory=dict)
 
 
@@ -133,7 +137,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
 
     visitors = VisitorUnlocks(hass, coordinator)
     await visitors.async_start()
-    entry.runtime_data = ProtegeRuntimeData(client, coordinator, site, visitors)
+    waits = ArmWhenReady(hass, coordinator)
+    entry.runtime_data = ProtegeRuntimeData(
+        client, coordinator, site, visitors, arm_when_ready=waits
+    )
+    waits.async_start()
+    entry.async_on_unload(waits.async_stop)
     entry.async_on_unload(visitors.async_stop)
     entry.async_on_unload(_close)
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _close))
@@ -145,6 +154,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
     await async_register_card(hass)
     if entry.options.get(OPT_ALARMO_ENTITY) and entry.options.get(OPT_ALARMO_AREA) is not None:
         sync = AlarmoSync(hass, entry)
+        entry.runtime_data.alarmo = sync
         sync.async_start()
         entry.async_on_unload(sync.async_stop)
     return True
@@ -177,16 +187,23 @@ def _register_devices(
     else:
         parent = {"via_device": next(iter(controller.identifiers))}
     site = coordinator.site
-    for kind, model, objects in (
-        ("area", "Protege WX area", site.areas.values()),
-        ("door", "Protege WX door", site.doors.values()),
-        ("input", "Protege WX input", site.inputs.values()),
-    ):
-        for obj in objects:
+    chosen_outputs = {int(rec_id) for rec_id in entry.options.get(OPT_OUTPUTS, [])}
+    named: list[tuple[str, str, list[tuple[int, str]]]] = [
+        ("area", "Protege WX area", [(a.id, a.name) for a in site.areas.values()]),
+        ("door", "Protege WX door", [(d.id, d.name) for d in site.doors.values()]),
+        ("input", "Protege WX input", [(i.id, i.name) for i in site.inputs.values()]),
+        (
+            "output",
+            "Protege WX output",
+            [(rec_id, name) for rec_id, name in site.outputs.items() if rec_id in chosen_outputs],
+        ),
+    ]
+    for kind, model, objects in named:
+        for rec_id, name in objects:
             registry.async_get_or_create(
                 config_entry_id=entry.entry_id,
-                identifiers={object_identifier(coordinator, kind, obj.id)},
-                name=obj.name,
+                identifiers={object_identifier(coordinator, kind, rec_id)},
+                name=name,
                 manufacturer=INTEGRATION_AUTHOR,
                 model=model,
                 **parent,
@@ -212,7 +229,14 @@ async def async_remove_config_entry_device(
     coordinator = entry.runtime_data.coordinator
     site = coordinator.site
     current = {(DOMAIN, controller_uid(coordinator))}
-    for kind, ids in (("area", site.areas), ("door", site.doors), ("input", site.inputs)):
+    chosen_outputs = {int(rec_id) for rec_id in entry.options.get(OPT_OUTPUTS, [])}
+    outputs = [rec_id for rec_id in site.outputs if rec_id in chosen_outputs]
+    for kind, ids in (
+        ("area", site.areas),
+        ("door", site.doors),
+        ("input", site.inputs),
+        ("output", outputs),
+    ):
         current |= {object_identifier(coordinator, kind, rec_id) for rec_id in ids}
     return not (device.identifiers & current)
 

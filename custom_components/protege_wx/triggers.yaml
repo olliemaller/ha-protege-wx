@@ -1,0 +1,69 @@
+access_granted:
+  target:
+    entity:
+      integration: protege_wx
+      domain: event
+  fields:
+    people:
+      selector:
+        text:
+          multiple: true
+    method:
+      default: any
+      selector:
+        select:
+          translation_key: access_method
+          options:
+            - any
+            - card
+            - pin
+
+access_denied:
+  target:
+    entity:
+      integration: protege_wx
+      domain: event
+
+door_alert:
+  target:
+    entity:
+      integration: protege_wx
+      domain: event
+  fields:
+    alerts:
+      default:
+        - forced_open
+        - left_open
+      selector:
+        select:
+          translation_key: door_alert
+          multiple: true
+          options:
+            - forced_open
+            - left_open
+
+failed_to_arm:
+  target:
+    entity:
+      integration: protege_wx
+      domain: event
+
+emergency:
+  target:
+    entity:
+      integration: protege_wx
+      domain: event
+  fields:
+    types:
+      default:
+        - duress
+        - panic
+        - medical
+      selector:
+        select:
+          translation_key: emergency_type
+          multiple: true
+          options:
+            - duress
+            - panic
+            - medical

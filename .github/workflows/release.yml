@@ -36,3 +36,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" protege_wx.zip --clobber
+
+      # The Marketplace shows the release notes in Settings > Updates. If the
+      # release was published without notes, use this version's CHANGELOG.md
+      # section.
+      - name: Fill in empty release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body=$(gh release view "$GITHUB_REF_NAME" --json body --jq .body)
+          if [ -n "$(echo "$body" | tr -d '[:space:]')" ]; then
+            echo "Release notes already written"; exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { if (found) exit; if (index($0, "## " v) == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          else
+            echo "::warning::No CHANGELOG.md section for $version"
+          fi

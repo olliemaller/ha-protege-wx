@@ -167,7 +167,7 @@ async def test_setup_creates_expected_entities(hass: HomeAssistant, controller) 
     assert _state(hass, "lock.front_door") == "locked"
     assert _state(hass, "switch.front_door_hold_open") == "off"
     assert entities["switch.front_door_hold_open"].entity_category == "config"
-    assert "binary_sensor.front_door_door" not in entities
+    assert "binary_sensor.front_door_position" not in entities
     kitchen = hass.states.get("binary_sensor.kitchen")
     assert kitchen.state == "off" and kitchen.attributes["device_class"] == "motion"
     assert entities["binary_sensor.controller_input_8"].disabled_by is er.RegistryEntryDisabler.INTEGRATION
@@ -184,12 +184,21 @@ async def test_setup_creates_expected_entities(hass: HomeAssistant, controller) 
     assert not [e for e in entities if e.startswith("switch.protege_wx_controller")]
 
 
+def _device(hass: HomeAssistant, identifier: str) -> dr.DeviceEntry | None:
+    registry = dr.async_get(hass)
+    key = (DOMAIN, identifier)
+    # Home Assistant 2026.10 deprecated async_get_device(identifiers=...).
+    if hasattr(registry, "async_get_device_by_identifier"):
+        entry_id = hass.config_entries.async_entries(DOMAIN)[0].entry_id
+        return registry.async_get_device_by_identifier(key, entry_id)
+    return registry.async_get_device(identifiers={key})
+
+
 async def test_devices_linked_to_controller(hass: HomeAssistant, controller) -> None:
     entry = _entry(controller)
     await _setup(hass, entry)
-    registry = dr.async_get(hass)
-    hub = registry.async_get_device(identifiers={(DOMAIN, "A1B2C3D4")})
-    kitchen = registry.async_get_device(identifiers={(DOMAIN, "A1B2C3D4_input_4")})
+    hub = _device(hass, "A1B2C3D4")
+    kitchen = _device(hass, "A1B2C3D4_input_4")
     assert hub is not None and kitchen is not None
     assert kitchen.via_device_id == hub.id and kitchen.name == "Kitchen"
     assert hub.manufacturer == "Integrated Control Technology"
@@ -330,7 +339,7 @@ async def test_trouble_raises_alarm_fault(hass: HomeAssistant, controller) -> No
     await _refresh(hass, entry)
     fault = hass.states.get("binary_sensor.protege_wx_controller_alarm_fault")
     assert fault.state == "on" and fault.attributes["active"] == ["Analog Expander 1 Mains Failure"]
-    assert hass.states.get("event.protege_wx_controller_controller_events").attributes["event_type"] == "trouble"
+    assert hass.states.get("event.protege_wx_controller_events").attributes["event_type"] == "trouble"
 
 
 # ── other controls ──────────────────────────────────────────────────────────
@@ -355,7 +364,7 @@ async def test_doors_bypass_outputs(hass: HomeAssistant, controller) -> None:
             DOMAIN, "bypass", {"entity_id": "binary_sensor.alarm_ready_to_arm", "mode": "none"}, blocking=True
         )
 
-    output = "switch.protege_wx_controller_garage_door_open_close"
+    output = "switch.garage_door_open_close"
     await hass.services.async_call(DOMAIN, "pulse_output", {"entity_id": output, "seconds": 5}, blocking=True)
     assert _state(hass, output) == "on"
     assert controller.state.commands[-1].endswith("Command=2&Data1=5")
@@ -1117,7 +1126,7 @@ async def test_emergency_alert(hass: HomeAssistant, controller) -> None:
 
     assert alerts and alerts[0].data["type"] == "duress" and alerts[0].data["by"] == "Jane Citizen"
     assert ("Protege WX", "duress alarm by Jane Citizen") in [(e.data["name"], e.data["message"]) for e in logged]
-    assert hass.states.get("event.protege_wx_controller_controller_events").attributes["event_type"] == "duress"
+    assert hass.states.get("event.protege_wx_controller_events").attributes["event_type"] == "duress"
     issue_id = f"emergency_{entry.entry_id}"
     issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
     assert issue is not None and issue.severity == ir.IssueSeverity.CRITICAL and issue.is_fixable
@@ -1873,3 +1882,257 @@ async def test_alarmo_one_way(hass: HomeAssistant, controller) -> None:
     await hass.async_block_till_done()
     assert _state(hass, ALARM) == "disarmed"
     assert 3 not in _area_commands(controller)
+
+
+# ── arm when ready ──────────────────────────────────────────────────────────
+
+WAIT_SWITCH = "switch.alarm_arm_when_ready"
+WAIT_MODE = "select.alarm_arm_when_ready_mode"
+
+
+async def test_arm_when_ready_waits_for_zones(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    results = async_capture_events(hass, "protege_wx_arm_when_ready")
+    controller.open_input(5)  # Up Passage: armed in every mode
+    await _refresh(hass, entry)
+
+    await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    assert _state(hass, WAIT_SWITCH) == "on"
+    assert _state(hass, ALARM) == "disarmed"
+    attributes = hass.states.get(WAIT_SWITCH).attributes
+    assert attributes["mode"] == "away" and attributes["open_zones"] == ["Up Passage"]
+
+    controller.state.inputs[5][0] = 0  # closed
+    await _refresh(hass, entry)
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "armed_away"
+    assert _state(hass, WAIT_SWITCH) == "off"
+    assert results[-1].data["result"] == "armed"
+
+
+async def test_arm_when_ready_arms_now_in_chosen_mode(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    assert hass.states.get(WAIT_MODE).attributes["options"] == ["away", "home", "night"]
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": WAIT_MODE, "option": "home"}, blocking=True
+    )
+    controller.open_input(3)  # Living: a stay zone, ignored for Home
+    await _refresh(hass, entry)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "armed_home"
+    assert _state(hass, WAIT_SWITCH) == "off"
+
+
+async def test_arm_when_ready_cancel_and_time_limit(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    results = async_capture_events(hass, "protege_wx_arm_when_ready")
+    controller.open_input(5)
+    await _refresh(hass, entry)
+
+    await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    await hass.services.async_call("switch", "turn_off", {"entity_id": WAIT_SWITCH}, blocking=True)
+    await hass.async_block_till_done()
+    assert _state(hass, WAIT_SWITCH) == "off"
+    assert results[-1].data["result"] == "cancelled"
+
+    await hass.services.async_call(
+        DOMAIN, "arm_when_ready", {"entity_id": ALARM, "mode": "night", "minutes": 2}, blocking=True
+    )
+    assert hass.states.get(WAIT_SWITCH).attributes["mode"] == "night"
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=3))
+    await hass.async_block_till_done()
+    assert _state(hass, WAIT_SWITCH) == "off"
+    assert results[-1].data["result"] == "timed_out"
+    assert results[-1].data["open_zones"] == ["Up Passage"]
+    assert _state(hass, ALARM) == "disarmed"
+
+
+async def test_arm_when_ready_stops_when_armed_elsewhere(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    results = async_capture_events(hass, "protege_wx_arm_when_ready")
+    controller.open_input(5)
+    await _refresh(hass, entry)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": WAIT_SWITCH}, blocking=True)
+    # Someone force-arms from the keypad.
+    await hass.services.async_call(
+        DOMAIN, "arm", {"entity_id": ALARM, "mode": "away", "force": True}, blocking=True
+    )
+    await _refresh(hass, entry)
+    assert _state(hass, WAIT_SWITCH) == "off"
+    assert results[-1].data["result"] == "armed"
+
+
+async def test_arm_when_ready_needs_pin_like_arming(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, users=[make_user("Jane", "1234", can_arm=True, can_disarm=True)])
+    await _setup(hass, entry)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "arm_when_ready", {"entity_id": ALARM, "code": "9999"}, blocking=True
+        )
+    await hass.services.async_call(
+        DOMAIN, "arm_when_ready", {"entity_id": ALARM, "code": "1234"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert _state(hass, ALARM) == "armed_away"
+    assert hass.states.get(ALARM).attributes["changed_by"] == "Jane"
+
+
+# ── automation triggers and conditions (Home Assistant 2026.10+) ───────────
+
+
+def _new_triggers_supported() -> bool:
+    from custom_components.protege_wx import condition, trigger
+
+    return trigger.SUPPORTED and condition.SUPPORTED
+
+
+needs_new_triggers = pytest.mark.skipif(
+    not _new_triggers_supported(), reason="needs Home Assistant 2026.10 or later"
+)
+
+
+async def _automation(hass: HomeAssistant, trigger: dict, conditions: list | None = None) -> list:
+    from homeassistant.setup import async_setup_component
+
+    fired = async_capture_events(hass, "protege_test_fired")
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {
+            "automation": {
+                "id": "protege_test",
+                "triggers": [trigger],
+                "conditions": conditions or [],
+                "actions": [
+                    {
+                        "event": "protege_test_fired",
+                        "event_data": {
+                            "who": "{{ trigger.user }}",
+                            "type": "{{ trigger.event_type }}",
+                            "entity": "{{ trigger.entity_id }}",
+                        },
+                    }
+                ],
+            }
+        },
+    )
+    await hass.async_block_till_done()
+    return fired
+
+
+@needs_new_triggers
+async def test_trigger_access_granted_filters_people(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    fired = await _automation(
+        hass,
+        {
+            "trigger": "protege_wx.access_granted",
+            "target": {"entity_id": "event.front_door_events"},
+            "options": {"people": ["jane citizen"], "method": "pin"},
+        },
+    )
+    controller.log("User Mark Maller Entry Granted Front Door Using User By Pin")
+    await _refresh(hass, entry)
+    assert fired == []
+    controller.log("User Jane Citizen Entry Granted Gate Using User By Pin")
+    await _refresh(hass, entry)
+    assert fired == []  # the other door
+    controller.log("User Jane Citizen Entry Granted Front Door Using User By Pin")
+    await _refresh(hass, entry)
+    assert len(fired) == 1
+    assert fired[0].data["who"] == "Jane Citizen" and fired[0].data["type"] == "access_granted"
+
+
+@needs_new_triggers
+async def test_trigger_by_device_and_failed_to_arm(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    area_device = _device(hass, "A1B2C3D4_area_16")
+    fired = await _automation(
+        hass,
+        {"trigger": "protege_wx.failed_to_arm", "target": {"device_id": area_device.id}},
+    )
+    controller.open_input(5)
+    await _refresh(hass, entry)
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM}, blocking=True
+        )
+    await hass.async_block_till_done()
+    assert [e.data["type"] for e in fired] == ["failed_to_arm"]
+
+
+@needs_new_triggers
+async def test_condition_ready_to_arm(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    fired = await _automation(
+        hass,
+        {"trigger": "event", "event_type": "protege_test_go"},
+        [
+            {
+                "condition": "protege_wx.ready_to_arm",
+                "target": {"entity_id": ALARM},
+                "options": {"mode": "home"},
+            }
+        ],
+    )
+    controller.open_input(3)  # Living: a stay zone, ignored for home
+    await _refresh(hass, entry)
+    hass.bus.async_fire("protege_test_go")
+    await hass.async_block_till_done()
+    assert len(fired) == 1
+    controller.open_input(5)  # Up Passage: armed for home too
+    await _refresh(hass, entry)
+    hass.bus.async_fire("protege_test_go")
+    await hass.async_block_till_done()
+    assert len(fired) == 1
+
+
+# ── Marketplace and 2026.11 housekeeping ───────────────────────────────────
+
+
+def test_translations_match_strings() -> None:
+    import json
+    import pathlib
+
+    base = pathlib.Path(__file__).parent.parent / "custom_components/protege_wx"
+    strings = json.loads((base / "strings.json").read_text())
+    english = json.loads((base / "translations/en.json").read_text())
+    assert strings == english
+
+
+def test_every_entity_class_handles_entity_id_changes() -> None:
+    from custom_components.protege_wx.entity import ProtegeEntity
+
+    def subclasses(cls):
+        for sub in cls.__subclasses__():
+            yield sub
+            yield from subclasses(sub)
+
+    classes = list(subclasses(ProtegeEntity))
+    assert len(classes) > 20
+    for cls in classes:
+        assert "async_entity_id_changed" in cls.__dict__, cls.__name__
+
+
+async def test_outputs_are_child_devices(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, outputs=["120"])
+    await _setup(hass, entry)
+    hub = _device(hass, "A1B2C3D4")
+    output = _device(hass, "A1B2C3D4_output_120")
+    assert output is not None and output.via_device_id == hub.id
+    assert output.name == "Garage Door Open/Close" and output.model == "Protege WX output"
+    state = hass.states.get("switch.garage_door_open_close")
+    assert state is not None and state.name == "Garage Door Open/Close"

@@ -113,6 +113,12 @@ class AlarmoSync:
         self._reconcile()
 
     @callback
+    def async_restart(self) -> None:
+        """Track the panels again, e.g. after the Protege panel's entity ID changed."""
+        self.async_stop()
+        self.async_start()
+
+    @callback
     def async_stop(self) -> None:
         if self._remove:
             self._remove()

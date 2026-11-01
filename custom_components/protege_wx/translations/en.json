@@ -76,7 +76,8 @@
           "notify_failed_arm": "Notify when the alarm fails to arm",
           "code_arm_required": "Require a PIN to arm",
           "outputs": "Outputs to add as switches",
-          "visitor_minutes": "Visitor unlock time"
+          "visitor_minutes": "Visitor unlock time",
+          "arm_when_ready_minutes": "Arm when ready time limit"
         },
         "data_description": {
           "scan_interval": "How often to read area and zone status and the event log. 1 second is quick and light; doors and troubles are read at least every 5 seconds.",
@@ -84,7 +85,8 @@
           "notify_failed_arm": "Shows a notification naming the zones that stopped the alarm arming, from Home Assistant or a keypad.",
           "code_arm_required": "Only applies once you add users. Disarming always needs a PIN when users exist.",
           "outputs": "Only outputs you pick are added. Leave out keypad LEDs, beepers, the bell and door locks.",
-          "visitor_minutes": "How long a door's \"Visitor unlock\" button (and the protege_wx.visitor_unlock action, unless it says otherwise) holds the door unlocked before locking it again."
+          "visitor_minutes": "How long a door's \"Visitor unlock\" button (and the protege_wx.visitor_unlock action, unless it says otherwise) holds the door unlocked before locking it again.",
+          "arm_when_ready_minutes": "How long an area's \"Arm when ready\" switch (and the protege_wx.arm_when_ready action, unless it says otherwise) waits for the zones to close before giving up."
         }
       },
       "inputs": {
@@ -197,6 +199,39 @@
         "both": "Both ways",
         "to_alarmo": "Protege to Alarmo only"
       }
+    },
+    "wait_mode": {
+      "options": {
+        "away": "Away",
+        "home": "Home",
+        "night": "Night"
+      }
+    },
+    "access_method": {
+      "options": {
+        "any": "Card or PIN",
+        "card": "Card",
+        "pin": "PIN"
+      }
+    },
+    "door_alert": {
+      "options": {
+        "forced_open": "Forced open",
+        "left_open": "Left open"
+      }
+    },
+    "emergency_type": {
+      "options": {
+        "duress": "Duress",
+        "panic": "Panic",
+        "medical": "Medical"
+      }
+    },
+    "ready_mode": {
+      "options": {
+        "away": "Away",
+        "home": "Home"
+      }
     }
   },
   "entity": {
@@ -205,7 +240,7 @@
         "name": "Tamper"
       },
       "door_position": {
-        "name": "Door"
+        "name": "Position"
       },
       "ready_to_arm": {
         "name": "Ready to arm"
@@ -231,6 +266,14 @@
           "temporary": "Bypassed until disarmed",
           "permanent": "Bypassed permanently"
         }
+      },
+      "arm_when_ready_mode": {
+        "name": "Arm when ready mode",
+        "state": {
+          "away": "Away",
+          "home": "Home",
+          "night": "Night"
+        }
       }
     },
     "button": {
@@ -253,6 +296,9 @@
       },
       "walk_test": {
         "name": "Walk test"
+      },
+      "arm_when_ready": {
+        "name": "Arm when ready"
       }
     },
     "sensor": {
@@ -369,7 +415,7 @@
         }
       },
       "controller_events": {
-        "name": "Controller events",
+        "name": "Events",
         "state_attributes": {
           "event_type": {
             "state": {
@@ -431,6 +477,9 @@
     },
     "stay_off": {
       "message": "Stay arming is turned off for this area on the controller."
+    },
+    "area_not_ready": {
+      "message": "This area isn't set up yet. Try again in a moment."
     }
   },
   "services": {
@@ -449,6 +498,24 @@
         "code": {
           "name": "PIN",
           "description": "Needed if users are set up and arming needs a PIN."
+        }
+      }
+    },
+    "arm_when_ready": {
+      "name": "Arm when ready",
+      "description": "Arm an area as soon as all its zones are closed, or straight away if they already are. Gives up after the time limit. Turning off the area's \"Arm when ready\" switch stops it.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Away, Home or Night, as on the alarm panel."
+        },
+        "minutes": {
+          "name": "Time limit",
+          "description": "How long to wait for the zones to close. Leave out to use the time set in the integration's options (30 minutes unless changed)."
+        },
+        "code": {
+          "name": "PIN",
+          "description": "Needed when users are set up and arming requires a PIN."
         }
       }
     },
@@ -522,6 +589,62 @@
             "title": "Mark the {kind} alarm as handled",
             "description": "The controller reported a **{kind}** alarm in {area} ({by}).\n\nController log: {text}\n\nYour monitoring centre will have received this too. Check everyone is safe, then mark this as handled.\n\nSubmitting only clears this alert in Home Assistant. It doesn't change anything on the controller."
           }
+        }
+      }
+    }
+  },
+  "triggers": {
+    "access_granted": {
+      "name": "Access granted",
+      "description": "Triggers when someone badges in at one or more doors.",
+      "fields": {
+        "people": {
+          "name": "People",
+          "description": "Only for these people, by the name the controller shows. Leave empty for anyone."
+        },
+        "method": {
+          "name": "Card or PIN",
+          "description": "Only when they used a card, or a PIN."
+        }
+      }
+    },
+    "access_denied": {
+      "name": "Access denied",
+      "description": "Triggers when a card or PIN is refused at one or more doors."
+    },
+    "door_alert": {
+      "name": "Door forced or left open",
+      "description": "Triggers when one or more doors are forced open or left open.",
+      "fields": {
+        "alerts": {
+          "name": "Alerts",
+          "description": "Which door alerts to trigger on."
+        }
+      }
+    },
+    "failed_to_arm": {
+      "name": "Area failed to arm",
+      "description": "Triggers when one or more areas refuse to arm, for example because a zone is open."
+    },
+    "emergency": {
+      "name": "Duress, panic or medical alarm",
+      "description": "Triggers when the controller logs a duress, panic or medical alarm.",
+      "fields": {
+        "types": {
+          "name": "Alarm types",
+          "description": "Which emergency alarms to trigger on."
+        }
+      }
+    }
+  },
+  "conditions": {
+    "ready_to_arm": {
+      "name": "Area is ready to arm",
+      "description": "Tests if every chosen area could be armed now, with no zone open.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Away checks every zone. Home ignores the zones that only arm when away."
         }
       }
     }

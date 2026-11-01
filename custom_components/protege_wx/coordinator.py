@@ -699,7 +699,14 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         controller's clock drift once that's known."""
         if when is None:
             return None
-        utc = dt_util.as_utc(when.replace(tzinfo=dt_util.get_default_time_zone()))
+        zone = dt_util.get_default_time_zone()
+        # In the hour the clocks go back, a local time happens twice: take
+        # whichever of the two is nearer now (the controller's log is recent).
+        now = dt_util.utcnow()
+        utc = min(
+            (dt_util.as_utc(when.replace(tzinfo=zone, fold=fold)) for fold in (0, 1)),
+            key=lambda candidate: abs((now - candidate).total_seconds()),
+        )
         if len(self.clock_drift) >= 3:
             utc -= timedelta(seconds=statistics.median(self.clock_drift))
         return utc

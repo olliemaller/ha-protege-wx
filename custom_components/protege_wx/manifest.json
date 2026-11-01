@@ -7,6 +7,10 @@
     "http",
     "repairs"
   ],
+  "categories": [
+    "security_safety.alarm_systems",
+    "security_safety.locks_access"
+  ],
   "codeowners": [
     "@olliemaller"
   ],
@@ -20,5 +24,5 @@
     "custom_components.protege_wx"
   ],
   "requirements": [],
-  "version": "0.3.2"
+  "version": "0.4.0"
 }

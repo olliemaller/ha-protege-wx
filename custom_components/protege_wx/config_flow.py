@@ -26,6 +26,7 @@ from .const import (
     ALARMO_DIRECTIONS,
     CONF_PROTOCOL,
     CONF_SERIAL,
+    DEFAULT_ARM_WHEN_READY_MINUTES,
     DEFAULT_INPUT_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_VISITOR_MINUTES,
@@ -38,6 +39,7 @@ from .const import (
     OPT_ALARMO_CODE,
     OPT_ALARMO_DIRECTION,
     OPT_ALARMO_ENTITY,
+    OPT_ARM_WHEN_READY_MINUTES,
     OPT_CODE_ARM_REQUIRED,
     OPT_DELAYS,
     OPT_INPUT_TYPES,
@@ -395,6 +397,9 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                     OPT_VISITOR_MINUTES: int(
                         user_input.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES)
                     ),
+                    OPT_ARM_WHEN_READY_MINUTES: int(
+                        user_input.get(OPT_ARM_WHEN_READY_MINUTES, DEFAULT_ARM_WHEN_READY_MINUTES)
+                    ),
                 }
             )
         schema = vol.Schema(
@@ -435,6 +440,15 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 vol.Optional(
                     OPT_VISITOR_MINUTES,
                     default=options.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1, max=240, step=1, unit_of_measurement="min",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    OPT_ARM_WHEN_READY_MINUTES,
+                    default=options.get(OPT_ARM_WHEN_READY_MINUTES, DEFAULT_ARM_WHEN_READY_MINUTES),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=1, max=240, step=1, unit_of_measurement="min",

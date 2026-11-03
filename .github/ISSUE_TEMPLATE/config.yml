@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/olliemaller/ha-protege-wx/security/advisories/new
+    about: Please report security problems privately, not as an issue.
+  - name: Documentation
+    url: https://github.com/olliemaller/ha-protege-wx/tree/main/docs
+    about: Installation, setup, automations and troubleshooting.

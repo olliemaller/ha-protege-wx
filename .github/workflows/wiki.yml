@@ -1,0 +1,87 @@
+name: Wiki
+
+# Publishes docs/ to the GitHub wiki, so the wiki always matches main.
+# docs/README.md becomes the wiki's Home page. Edit the pages in docs/, not in
+# the wiki: anything changed in the wiki is overwritten on the next run.
+#
+# The wiki must exist first: open the Wiki tab once and save any page.
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/wiki.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the wiki
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          if ! git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki; then
+            echo "::error::No wiki yet. Open the repository's Wiki tab, create any page, then run this workflow again."
+            exit 1
+          fi
+
+      - name: Convert the pages
+        run: |
+          python3 - <<'EOF'
+          import pathlib, re
+
+          repo = "https://github.com/" + __import__("os").environ["GITHUB_REPOSITORY"] + "/blob/main/"
+          docs, wiki = pathlib.Path("docs"), pathlib.Path("wiki")
+          for old in wiki.glob("*.md"):
+              old.unlink()
+
+          def convert(text: str) -> str:
+              # Links between pages: Setup.md#x -> Setup#x, README.md -> Home
+              text = re.sub(r"\]\(README\.md(#[^)]*)?\)", lambda m: "](Home" + (m.group(1) or "") + ")", text)
+              text = re.sub(r"\]\(([A-Za-z0-9-]+)\.md(#[^)]*)?\)", lambda m: "](" + m.group(1) + (m.group(2) or "") + ")", text)
+              # Links out of docs/ go to the repository
+              text = re.sub(r"\]\(\.\./([^)]*)\)", lambda m: "](" + repo + m.group(1) + ")", text)
+              return text
+
+          pages = []
+          for page in sorted(docs.glob("*.md")):
+              name = "Home" if page.name == "README.md" else page.stem
+              (wiki / f"{name}.md").write_text(convert(page.read_text(encoding="utf-8")), encoding="utf-8")
+              pages.append(name)
+
+          home = (wiki / "Home.md").read_text(encoding="utf-8")
+          links = [line for line in home.splitlines() if line.startswith(("## ", "- ["))]
+          sidebar = ["**[Home](Home)**"]
+          for line in links:
+              if line.startswith("## "):
+                  sidebar += ["", "**" + line[3:] + "**", ""]
+              else:
+                  sidebar.append("- " + line[2:].split(":")[0])
+          (wiki / "_Sidebar.md").write_text("\n".join(sidebar) + "\n", encoding="utf-8")
+          (wiki / "_Footer.md").write_text(
+              f"Edit these pages in [docs/]({repo}docs) on GitHub. The wiki is rebuilt from there.\n",
+              encoding="utf-8",
+          )
+          print("Pages:", ", ".join(pages))
+          EOF
+
+      - name: Publish
+        working-directory: wiki
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date"; exit 0
+          fi
+          git commit -m "Update from docs/ at ${GITHUB_SHA::7}"
+          git push

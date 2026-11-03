@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Documentation moved to [docs/](docs/README.md) (also published to the wiki); the README is now a short overview with the new alarm card in light and dark.
+- Added a security policy, contributing guide, code of conduct, accessibility statement and pull request template.
+
 ## 0.4.1
 
 - The project now stands on its own: the alarm card, README, brand images and blueprint no longer carry any company branding.

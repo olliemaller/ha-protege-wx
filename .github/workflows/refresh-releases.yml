@@ -1,0 +1,73 @@
+name: Refresh old releases
+
+# Run by hand after tags have been moved (for example after rewriting history).
+# For every published release it:
+#   * rebuilds protege_wx.zip from the release's tag and replaces the asset;
+#   * removes release-note lines that match the "remove" pattern.
+# Start with "dry run" ticked to see what it would change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      remove:
+        description: Remove release-note lines matching this (case-insensitive, extended regex). Leave empty to keep notes.
+        required: false
+        default: ""
+      dry_run:
+        description: Only show what would change
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refresh each release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REMOVE: ${{ inputs.remove }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          gh release list --limit 100 --json tagName --jq '.[].tagName' > tags.txt
+          while read -r tag; do
+            echo "::group::$tag"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::warning::$tag has a release but no tag; skipped"
+              echo "::endgroup::"; continue
+            fi
+
+            # The zip, from the tag's own tree
+            rm -rf build protege_wx.zip
+            mkdir build
+            git archive "$tag" custom_components/protege_wx | tar -x -C build
+            (cd build/custom_components/protege_wx && zip -qr -X "$GITHUB_WORKSPACE/protege_wx.zip" . -x '*.pyc')
+            echo "Built protege_wx.zip from $(git rev-parse --short "$tag^{commit}")"
+            if [ "$DRY_RUN" != "true" ]; then
+              gh release upload "$tag" protege_wx.zip --clobber
+            fi
+
+            # The notes
+            if [ -n "$REMOVE" ]; then
+              gh release view "$tag" --json body --jq .body > old.md
+              grep -viE -- "$REMOVE" old.md > new.md || true
+              if ! cmp -s old.md new.md; then
+                echo "Notes for $tag: removing"
+                diff old.md new.md || true
+                if [ "$DRY_RUN" != "true" ]; then
+                  gh release edit "$tag" --notes-file new.md
+                fi
+              else
+                echo "Notes for $tag: nothing to remove"
+              fi
+            fi
+            echo "::endgroup::"
+          done < tags.txt

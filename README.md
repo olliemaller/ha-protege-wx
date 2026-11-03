@@ -241,7 +241,7 @@ For most homes, the Protege panel and PINs on their own are enough.
 
 ## Alarm card
 
-<img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/alarm-card.png" alt="Alarm card: disarmed with open zones and an Arm when ready button, waiting to arm, and armed away" width="100%">
+<img src="https://raw.githubusercontent.com/olliemaller/ha-protege-wx/main/images/alarm-card.png" alt="Alarm card: disarmed with two zones open, waiting to arm when ready, and armed away" width="100%">
 
 The integration adds a dashboard card. There's nothing to download or add to resources:
 
@@ -258,7 +258,7 @@ show_arm_when_ready: true  # "Arm when ready" while zones are open
 
 Every option is also in the visual card editor: add a card, search for **Protege WX alarm**, and pick the area.
 
-It finds the area's open-zones, delay, alarm-cause and arm-when-ready entities by itself, and follows your light or dark theme.
+It finds the area's open-zones, delay, alarm-cause and arm-when-ready entities by itself, and takes its font and colours from your Home Assistant theme, light or dark.
 
 ## Voice (Assist)
 
@@ -435,7 +435,7 @@ Tests run against `tests/fake_controller.py`. It speaks both protocols with the 
 
 ## Support
 
-Found a bug or want a feature? [Open an issue](https://github.com/olliemaller/ha-protege-wx/issues).
+Found a bug or want a feature? [Open an issue](https://github.com/olliemaller/ha-protege-wx/issues) with your web interface version and what happened.
 
 ## Credits
 

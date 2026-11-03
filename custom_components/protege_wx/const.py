@@ -5,7 +5,6 @@ from typing import Final
 
 DOMAIN: Final = "protege_wx"
 MANUFACTURER: Final = "Integrated Control Technology"
-INTEGRATION_AUTHOR: Final = "Integrated Control Technology"
 
 CONF_PROTOCOL: Final = "protocol"
 CONF_SERIAL: Final = "serial"

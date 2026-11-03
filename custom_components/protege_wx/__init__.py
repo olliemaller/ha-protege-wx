@@ -28,7 +28,7 @@ from .card import async_register_card
 from .const import (
     CONF_PROTOCOL,
     DOMAIN,
-    INTEGRATION_AUTHOR,
+    MANUFACTURER,
     OPT_ALARMO_AREA,
     OPT_ALARMO_ENTITY,
     OPT_OUTPUTS,
@@ -204,7 +204,7 @@ def _register_devices(
                 config_entry_id=entry.entry_id,
                 identifiers={object_identifier(coordinator, kind, rec_id)},
                 name=name,
-                manufacturer=INTEGRATION_AUTHOR,
+                manufacturer=MANUFACTURER,
                 model=model,
                 **parent,
             )

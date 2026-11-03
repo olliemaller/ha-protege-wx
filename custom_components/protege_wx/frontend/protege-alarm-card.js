@@ -15,7 +15,7 @@
  * device by itself. Ships with the integration; nothing to add to resources.
  */
 
-const VERSION = "0.4.0";
+const VERSION = "0.4.1";
 
 const FEATURE = { HOME: 1, AWAY: 2, NIGHT: 4, VACATION: 32 };
 
@@ -41,21 +41,29 @@ const MODES = [
   { key: "vacation", label: "Holidays", service: "alarm_arm_vacation", feature: FEATURE.VACATION },
 ];
 
-const MARK = `
-  <svg class="mark" viewBox="0 0 256 256" aria-hidden="true">
-    <rect x="8" y="8" width="240" height="240" rx="56" fill="#042C53"/>
-    <path d="M128 36 L200 64 V124 C200 170 170 204 128 222 C86 204 56 170 56 124 V64 Z" fill="#FFFFFF"/>
-    <g fill="#042C53">
-      <circle cx="100" cy="90" r="10"/><circle cx="128" cy="90" r="10"/><circle cx="156" cy="90" r="10"/>
-      <circle cx="100" cy="118" r="10"/><circle cx="128" cy="118" r="10"/><circle cx="156" cy="118" r="10"/>
-      <circle cx="100" cy="146" r="10"/><circle cx="128" cy="146" r="10"/><circle cx="156" cy="146" r="10"/>
-    </g>
-    <circle cx="128" cy="180" r="12" fill="#378ADD"/>
-  </svg>`;
+// Material Design Icons paths, so the card draws its own icons.
+const ICON = {
+  disarmed: "M21,11C21,16.55 17.16,21.74 12,23C6.84,21.74 3,16.55 3,11V5L12,1L21,5V11M12,21C15.75,20 19,15.54 19,11.22V6.3L12,3.18L5,6.3V11.22C5,15.54 8.25,20 12,21Z",
+  armed_away: "M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,8.1 14.8,9.5V11C15.4,11 16,11.6 16,12.3V15.8C16,16.4 15.4,17 14.7,17H9.2C8.6,17 8,16.4 8,15.7V12.2C8,11.6 8.6,11 9.2,11V9.5C9.2,8.1 10.6,7 12,7M12,8.2C11.2,8.2 10.5,8.7 10.5,9.5V11H13.5V9.5C13.5,8.7 12.8,8.2 12,8.2Z",
+  armed_home: "M11,13H13V16H16V11H18L12,6L6,11H8V16H11V13M12,1L21,5V11C21,16.55 17.16,21.74 12,23C6.84,21.74 3,16.55 3,11V5L12,1Z",
+  armed_night: "M12 1L3 5V11C3 16.55 6.84 21.74 12 23C17.16 21.74 21 16.55 21 11V5L12 1M15.97 14.41C14.13 16.58 10.76 16.5 9 14.34C6.82 11.62 8.36 7.62 11.7 7C12.04 6.95 12.33 7.28 12.21 7.61C11.75 8.84 11.82 10.25 12.53 11.47C13.24 12.69 14.42 13.46 15.71 13.67C16.05 13.72 16.2 14.14 15.97 14.41Z",
+  armed_vacation: "M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,5.68C12.5,5.68 12.95,6.11 12.95,6.63V10.11L18,13.26V14.53L12.95,12.95V16.42L14.21,17.37V18.32L12,17.68L9.79,18.32V17.37L11.05,16.42V12.95L6,14.53V13.26L11.05,10.11V6.63C11.05,6.11 11.5,5.68 12,5.68Z",
+  triggered: "M21,19V20H3V19L5,17V11C5,7.9 7.03,5.17 10,4.29C10,4.19 10,4.1 10,4A2,2 0 0,1 12,2A2,2 0 0,1 14,4C14,4.1 14,4.19 14,4.29C16.97,5.17 19,7.9 19,11V17L21,19M14,21A2,2 0 0,1 12,23A2,2 0 0,1 10,21M19.75,3.19L18.33,4.61C20.04,6.3 21,8.6 21,11H23C23,8.07 21.84,5.25 19.75,3.19M1,11H3C3,8.6 3.96,6.3 5.67,4.61L4.25,3.19C2.16,5.25 1,8.07 1,11Z",
+  pending: "M6,2H18V8H18V8L14,12L18,16V16H18V22H6V16H6V16L10,12L6,8V8H6V2M16,16.5L12,12.5L8,16.5V20H16V16.5M12,11.5L16,7.5V4H8V7.5L12,11.5M10,6H14V6.75L12,8.75L10,6.75V6Z",
+  unavailable: "M4,1C2.89,1 2,1.89 2,3V7C2,8.11 2.89,9 4,9H1V11H13V9H10C11.11,9 12,8.11 12,7V3C12,1.89 11.11,1 10,1H4M4,3H10V7H4V3M14,13C12.89,13 12,13.89 12,15V19C12,20.11 12.89,21 14,21H11V23H23V21H20C21.11,21 22,20.11 22,19V15C22,13.89 21.11,13 20,13H14M3.88,13.46L2.46,14.88L4.59,17L2.46,19.12L3.88,20.54L6,18.41L8.12,20.54L9.54,19.12L7.41,17L9.54,14.88L8.12,13.46L6,15.59L3.88,13.46M14,15H20V19H14V15Z",
+  backspace: "M19,15.59L17.59,17L14,13.41L10.41,17L9,15.59L12.59,12L9,8.41L10.41,7L14,10.59L17.59,7L19,8.41L15.41,12L19,15.59M22,3A2,2 0 0,1 24,5V19A2,2 0 0,1 22,21H7C6.31,21 5.77,20.64 5.41,20.11L0,12L5.41,3.88C5.77,3.35 6.31,3 7,3H22M22,5H7L2.28,12L7,19H22V5Z",
+};
+ICON.arming = ICON.pending;
+ICON.disarming = ICON.pending;
+ICON.armed_custom_bypass = ICON.armed_away;
+ICON.unknown = ICON.unavailable;
 
-// A status node: the mark's ringed dot, in the state's colour (beside words).
-const NODE = `<svg class="node" viewBox="0 0 20 20" aria-hidden="true">
-  <circle cx="10" cy="10" r="9" class="ring"/><circle cx="10" cy="10" r="4.2" class="middle"/><circle cx="10" cy="10" r="1.8" class="core"/></svg>`;
+const svg = (path, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
+
+const time = (date) => date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+const list = (names) =>
+  names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
 const WAIT_MODE_LABEL = { away: "away", home: "home", night: "night" };
 
@@ -296,7 +304,7 @@ class ProtegeAlarmCard extends HTMLElement {
     if (!delay) return;
     const left = Math.max(0, Math.round((delay.ends - Date.now()) / 1000));
     el.querySelector(".secs").textContent = left;
-    el.querySelector(".bar span").style.width = `${Math.min(100, (left / delay.total) * 100)}%`;
+    el.querySelector(".track span").style.transform = `scaleX(${Math.min(1, left / delay.total)})`;
   }
 
   // ── render ───────────────────────────────────────────────────────────────
@@ -310,14 +318,17 @@ class ProtegeAlarmCard extends HTMLElement {
     }
     const state = hass.states[this._config.entity];
     if (!state) {
-      this.shadowRoot.innerHTML = `<ha-card><div class="pad">Entity not found: ${esc(this._config.entity)}</div></ha-card>`;
+      this.shadowRoot.innerHTML = `<style>${this._css()}</style><ha-card><div class="empty">Entity not found: ${esc(this._config.entity)}</div></ha-card>`;
       return;
     }
-    const dark = !!hass.themes?.darkMode;
     const value = state.state;
-    const armed = value.startsWith("armed_") || value === "arming";
+    const armed = value.startsWith("armed_");
     const tone =
-      value === "triggered" ? "alarm" : value === "pending" ? "warn" : armed ? "armed" : value === "disarmed" ? "ok" : "off";
+      value === "triggered" ? "alarm"
+      : value === "pending" || value === "arming" || value === "disarming" ? "busy"
+      : armed ? "armed"
+      : value === "disarmed" ? "ok"
+      : "off";
     const name = this._config.name || state.attributes.friendly_name || "Alarm";
     const features = state.attributes.supported_features || 0;
     const needsCode = !!state.attributes.code_format;
@@ -329,96 +340,98 @@ class ProtegeAlarmCard extends HTMLElement {
     const cause = causeId ? hass.states[causeId]?.state : null;
     const delay = this._delay();
 
-    const modeButtons = MODES.filter((m) => features & m.feature)
-      .map(
-        (m) => `<button class="mode" data-service="${m.service}" ${this._busy || value === "unavailable" ? "disabled" : ""}>
-          ${esc(m.label)}</button>`
-      )
-      .join("");
-
     const waitId = this._config.show_arm_when_ready ? this._related("arm_when_ready", "switch") : null;
     const wait = waitId ? hass.states[waitId] : null;
     const waiting = wait?.state === "on";
-    const chips = (list) => list.map((z) => `<span class="chip">${esc(z)}</span>`).join("");
+    const offline = value === "unavailable" || value === "unknown";
+    const busy = this._busy ? "disabled" : "";
 
-    let status = "";
-    if (value === "triggered" && cause && cause !== "none") {
-      status = `<div class="notice alarm"><span class="label">Set off by</span><b>${esc(cause)}</b></div>`;
+    // One line under the header that says what matters now.
+    let detail = "";
+    if (value === "triggered") {
+      detail = `<div class="note alarm">${cause && cause !== "none" ? `Set off by <b>${esc(cause)}</b>` : "The alarm is sounding"}</div>`;
+    } else if (delay) {
+      const left = Math.max(0, Math.round((delay.ends - Date.now()) / 1000));
+      detail = `<div class="note countdown">
+          <div class="row"><span>${delay.phase === "entry" ? "Entry delay" : "Exit delay"}</span>
+            <span class="time"><span class="secs">${left}</span> s</span></div>
+          <div class="track"><span></span></div></div>`;
     } else if (value === "disarmed" && waiting) {
       const mode = WAIT_MODE_LABEL[wait.attributes.mode] || "away";
       const still = wait.attributes.open_zones || openZones;
-      const until = wait.attributes.until ? new Date(wait.attributes.until) : null;
-      const by = until ? ` until ${esc(until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))}` : "";
-      status = `<div class="notice info"><span class="label">Arming ${esc(mode)} when ready</span>
-        <span class="muted">Waiting${by}${still.length ? ". Still open:" : ""}</span>${chips(still)}</div>`;
+      const until = wait.attributes.until ? ` until ${esc(time(new Date(wait.attributes.until)))}` : "";
+      detail = `<div class="note waiting"><b>Arming ${esc(mode)} when ready</b><br>
+          <span class="muted">${still.length ? `Waiting for ${esc(list(still))}` : "Arming now"}${until}</span></div>`;
     } else if (value === "disarmed" && zones) {
-      status = openZones.length
-        ? `<div class="notice warn"><span class="label">Open</span>${chips(openZones)}</div>`
-        : `<div class="notice ok"><span class="label">Ready</span>All zones closed</div>`;
+      detail = openZones.length
+        ? `<div class="note warn">${esc(list(openZones))} ${openZones.length === 1 ? "is" : "are"} open</div>`
+        : `<div class="note ready">Ready to arm</div>`;
     }
 
-    let waitButton = "";
-    if (wait && value === "disarmed" && waiting) {
-      waitButton = `<button class="mode secondary" data-wait="off" ${this._busy ? "disabled" : ""}>Stop waiting</button>`;
-    } else if (wait && value === "disarmed" && openZones.length) {
-      waitButton = `<button class="mode secondary" data-wait="on" ${this._busy ? "disabled" : ""}>Arm when ready</button>`;
-    }
+    const available = MODES.filter((m) => features & m.feature);
+    const modes = available
+      .map((m) => `<button class="btn" data-service="${m.service}" ${busy || offline ? "disabled" : ""}>${esc(m.label)}</button>`)
+      .join("");
 
-    const countdown = delay
-      ? `<div class="countdown"><div class="row"><span class="label">${delay.phase === "entry" ? "Entry delay" : "Exit delay"}</span>
-          <span class="secs">${Math.max(0, Math.round((delay.ends - Date.now()) / 1000))}</span><span class="unit">s</span></div>
-          <div class="bar"><span></span></div></div>`
-      : "";
+    let actions;
+    if (armed || value === "triggered" || value === "pending" || value === "arming") {
+      actions = `<button class="btn primary wide" data-service="alarm_disarm" ${busy}>Disarm</button>`;
+    } else {
+      let extra = "";
+      if (wait && value === "disarmed" && waiting) {
+        extra = `<button class="btn quiet wide" data-wait="off" ${busy}>Stop waiting</button>`;
+      } else if (wait && value === "disarmed" && openZones.length) {
+        extra = `<button class="btn quiet wide" data-wait="on" ${busy}>Arm when ready</button>`;
+      }
+      actions = modes + extra;
+    }
+    // One row of modes, however many the area has (no orphan on a second row).
+    const columns = Math.max(1, available.length);
 
     const keypad =
-      needsCode && this._config.show_keypad
+      needsCode && this._config.show_keypad && !offline
         ? `<div class="keypad">
-            <div class="display">${this._code ? "•".repeat(this._code.length) : '<span class="hint">PIN</span>'}</div>
+            <div class="dots" aria-label="PIN, ${this._code.length} digits entered">${
+              this._code.length ? "<i></i>".repeat(this._code.length) : '<span class="muted">Enter PIN</span>'
+            }</div>
             ${["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"]
-              .map((k) => `<button class="key" data-key="${k}">${k === "clear" ? "C" : k === "back" ? "⌫" : k}</button>`)
+              .map((k) =>
+                k === "clear"
+                  ? `<button class="key text" data-key="clear" ${this._code ? "" : "disabled"}>Clear</button>`
+                  : k === "back"
+                    ? `<button class="key text" data-key="back" aria-label="Delete" ${this._code ? "" : "disabled"}>${svg(ICON.backspace)}</button>`
+                    : `<button class="key" data-key="${k}">${k}</button>`
+              )
               .join("")}
           </div>`
         : "";
 
     const activity =
       this._config.show_activity && this._activity.length
-        ? `<div class="activity"><div class="label">Recent</div>${this._activity
+        ? `<div class="recent"><h3>Recent</h3>${this._activity
             .map((e) => {
-              const when = new Date(e.when * 1000);
-              const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
               const text = e.message ? `${e.name || ""} ${e.message}` : `${e.name || ""} ${STATE_LABEL[e.state] || e.state}`;
-              return `<div class="entry"><span class="time">${esc(time)}</span><span>${esc(text.trim())}</span></div>`;
+              return `<div class="entry"><span>${esc(text.trim())}</span><span class="when">${esc(time(new Date(e.when * 1000)))}</span></div>`;
             })
             .join("")}</div>`
         : "";
 
-    const changedBy = state.attributes.changed_by ? `by ${esc(state.attributes.changed_by)}` : "";
+    const by = state.attributes.changed_by && !offline ? ` · ${esc(state.attributes.changed_by)}` : "";
 
     this.shadowRoot.innerHTML = `
-      <style>${this._css(dark)}</style>
+      <style>${this._css()}</style>
       <ha-card class="${tone}">
         <div class="head">
-          ${MARK}
+          <div class="badge">${svg(ICON[value] || ICON.unknown)}</div>
           <div class="title">
-            <div class="label">Protege WX</div>
             <div class="name">${esc(name)}</div>
-          </div>
-          <div class="state">
-            <div class="value">${NODE}${esc(STATE_LABEL[value] || value)}</div>
-            <div class="by">${changedBy}</div>
+            <div class="state">${esc(STATE_LABEL[value] || value)}<span class="by">${by}</span></div>
           </div>
         </div>
-        ${countdown}
-        ${status}
-        <div class="body">
-          ${keypad}
-          <div class="actions">
-            ${armed || value === "triggered" || value === "pending"
-              ? `<button class="mode disarm" data-service="alarm_disarm" ${this._busy ? "disabled" : ""}>Disarm</button>`
-              : modeButtons + waitButton}
-          </div>
-        </div>
-        ${this._error ? `<div class="error">${esc(this._error)}</div>` : ""}
+        ${detail}
+        ${keypad}
+        <div class="actions" style="--pw-columns: ${columns}">${actions}</div>
+        ${this._error ? `<div class="error" role="alert">${esc(this._error)}</div>` : ""}
         ${activity}
       </ha-card>`;
 
@@ -441,78 +454,77 @@ class ProtegeAlarmCard extends HTMLElement {
     this._updateCountdown();
   }
 
-  _css(dark) {
-    const t = dark
-      ? { accent: "#378ADD", soft: "rgba(55,138,221,0.10)", softLine: "rgba(133,183,235,0.35)", line: "rgba(255,255,255,0.1)",
-          ok: "#3DD68C", okSoft: "rgba(61,214,140,0.14)", warn: "#F5B544", warnSoft: "rgba(245,181,68,0.14)",
-          danger: "#FF6B5E", dangerText: "#FF6B5E", dangerSoft: "rgba(255,107,94,0.14)", focus: "#85B7EB" }
-      : { accent: "#185FA5", soft: "#E6F1FB", softLine: "#B5D4F4", line: "#E5E7EB",
-          ok: "#1B6B3A", okSoft: "#E3F5EA", warn: "#8F5A00", warnSoft: "#FBEFD6",
-          danger: "#C0392B", dangerText: "#9B2C20", dangerSoft: "#FBE4E1", focus: "#378ADD" };
+  _css() {
+    // Home Assistant's own theme colours, so the card matches every theme.
     return `
-      :host { --pw-accent: ${t.accent}; --pw-fill: #185FA5; --pw-soft: ${t.soft}; --pw-soft-line: ${t.softLine};
-        --pw-line: ${t.line}; --pw-text: var(--primary-text-color); --pw-muted: var(--secondary-text-color);
-        --pw-ok: ${t.ok}; --pw-ok-soft: ${t.okSoft}; --pw-warn: ${t.warn}; --pw-warn-soft: ${t.warnSoft};
-        --pw-alarm: ${t.danger}; --pw-alarm-text: ${t.dangerText}; --pw-alarm-soft: ${t.dangerSoft}; --pw-focus: ${t.focus};
-        --pw-ease: cubic-bezier(.25,.1,.25,1); }
-      ha-card { overflow: hidden; font-family: Inter, var(--ha-font-family-body, system-ui), sans-serif; color: var(--pw-text); }
-      .label { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 500;
-        letter-spacing: .18em; text-transform: uppercase; color: var(--pw-accent); }
+      :host {
+        --pw-accent: var(--primary-color, #03a9f4);
+        --pw-ok: var(--success-color, #43a047);
+        --pw-warn: var(--warning-color, #ffa600);
+        --pw-alarm: var(--error-color, #db4437);
+        --pw-text: var(--primary-text-color, #212121);
+        --pw-muted: var(--secondary-text-color, #727272);
+        --pw-fill: color-mix(in srgb, var(--pw-text) 6%, transparent);
+        --pw-line: var(--divider-color, rgba(0, 0, 0, 0.12));
+        --pw-tone: var(--pw-muted);
+      }
+      ha-card { padding: 16px; display: flex; flex-direction: column; gap: 14px; color: var(--pw-text); }
+      .ok { --pw-tone: var(--pw-ok); }
+      .armed { --pw-tone: var(--pw-accent); }
+      .busy { --pw-tone: var(--pw-warn); }
+      .alarm { --pw-tone: var(--pw-alarm); }
+      svg { width: 24px; height: 24px; fill: currentColor; display: block; }
       .muted { color: var(--pw-muted); }
-      .head { display: flex; align-items: center; gap: 12px; padding: 16px; border-bottom: 1px solid var(--pw-line); }
-      .mark { width: 36px; height: 36px; flex: none; }
-      .title { flex: 1; min-width: 0; }
-      .name { font-size: 18px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .state { text-align: right; }
-      .state .value { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
-      .state .by { font-size: 12px; color: var(--pw-muted); }
-      .node { width: 16px; height: 16px; flex: none; }
-      .node .ring { fill: var(--pw-accent); } .node .middle { fill: rgba(255,255,255,0.55); } .node .core { fill: #E6F1FB; }
-      .armed .state .value { color: var(--pw-accent); }
-      .ok .state .value { color: var(--pw-ok); } .ok .node .ring { fill: var(--pw-ok); }
-      .warn .state .value { color: var(--pw-warn); } .warn .node .ring { fill: var(--pw-warn); }
-      .alarm .state .value { color: var(--pw-alarm-text); } .alarm .node .ring { fill: var(--pw-alarm); }
-      .off .node .ring { fill: var(--pw-muted); }
-      .alarm .head { background: var(--pw-alarm-soft); }
-      .countdown { padding: 12px 16px; border-bottom: 1px solid var(--pw-line); }
-      .countdown .row { display: flex; align-items: baseline; gap: 6px; }
-      .countdown .label { flex: 1; }
-      .countdown .secs { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 28px; font-weight: 600;
-        font-variant-numeric: tabular-nums; color: var(--pw-accent); }
-      .countdown .unit { color: var(--pw-muted); }
-      .bar { height: 4px; background: var(--pw-soft); border-radius: 999px; margin-top: 8px; overflow: hidden; }
-      .bar span { display: block; height: 100%; background: var(--pw-accent); transition: width 1s linear; }
-      .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--pw-line); font-size: 14px; }
-      .notice.ok .label { color: var(--pw-ok); }
-      .notice.warn .label { color: var(--pw-warn); }
-      .notice.alarm .label { color: var(--pw-alarm-text); }
-      .notice.info { background: var(--pw-soft); }
-      .chip { padding: 2px 10px; border-radius: 999px; background: var(--pw-soft); border: 1px solid var(--pw-soft-line); font-size: 12px; font-weight: 500; }
-      .body { padding: 16px; display: grid; gap: 14px; }
-      .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 280px; margin: 0 auto; width: 100%; }
-      .display { grid-column: 1 / -1; height: 40px; display: flex; align-items: center; justify-content: center;
-        border: 1px solid var(--pw-line); border-radius: 999px; font-size: 22px; letter-spacing: .3em; }
-      .display .hint { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .18em; color: var(--pw-muted); }
-      button { font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid var(--pw-line); background: transparent;
-        color: var(--pw-text); transition: background-color 240ms var(--pw-ease), transform 240ms var(--pw-ease); }
-      button:focus-visible { outline: 2px solid var(--pw-focus); outline-offset: 2px; }
-      button:disabled { opacity: .5; cursor: default; }
-      .key { height: 44px; font-size: 18px; font-variant-numeric: tabular-nums; }
-      .key:active { background: var(--pw-soft); }
-      .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-      .mode { flex: 1 1 90px; min-height: 44px; font-weight: 600; border-color: var(--pw-accent); color: var(--pw-accent); }
-      .mode:hover:not(:disabled) { background: var(--pw-soft); }
-      .mode.secondary { flex-basis: 100%; border-color: var(--pw-soft-line); }
-      .mode.disarm { background: var(--pw-fill); border-color: var(--pw-fill); color: #fff; }
-      .error { margin: 0 16px 12px; padding: 8px 14px; border-radius: 14px; background: var(--pw-alarm-soft); color: var(--pw-alarm-text); font-size: 13px; }
-      .activity { padding: 12px 16px; border-top: 1px solid var(--pw-line); display: grid; gap: 6px; font-size: 13px; }
-      .activity .label { color: var(--pw-muted); }
-      .entry { display: flex; gap: 10px; }
-      .entry .time { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--pw-muted); min-width: 64px; }
-      .foot { padding: 8px 16px 12px; text-align: right; }
-      .foot .label { color: var(--pw-muted); }
-      .pad { padding: 16px; }
-      @media (prefers-reduced-motion: reduce) { button, .bar span { transition: none; } }`;
+
+      .head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+      .badge { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+        color: var(--pw-tone); background: color-mix(in srgb, var(--pw-tone) 15%, transparent); }
+      .title { min-width: 0; }
+      .name { font-size: 14px; line-height: 20px; color: var(--pw-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .state { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+      .state .by { font-weight: 400; color: var(--pw-muted); font-size: 15px; letter-spacing: 0; }
+
+      .note { padding: 10px 12px; border-radius: 12px; background: var(--pw-fill); font-size: 14px; line-height: 20px; }
+      .note.ready { color: var(--pw-ok); background: color-mix(in srgb, var(--pw-ok) 10%, transparent); }
+      .note.warn { color: var(--pw-text); background: color-mix(in srgb, var(--pw-warn) 14%, transparent); }
+      .note.alarm { color: var(--pw-alarm); background: color-mix(in srgb, var(--pw-alarm) 12%, transparent); }
+      .note.waiting { background: color-mix(in srgb, var(--pw-accent) 10%, transparent); }
+      .countdown .row { display: flex; justify-content: space-between; align-items: baseline; }
+      .countdown .time { color: var(--pw-muted); font-variant-numeric: tabular-nums; }
+      .countdown .secs { font-size: 22px; font-weight: 600; color: var(--pw-text); }
+      .track { height: 4px; border-radius: 2px; margin-top: 8px; overflow: hidden; background: color-mix(in srgb, var(--pw-warn) 20%, transparent); }
+      .track span { display: block; height: 100%; background: var(--pw-warn); transform-origin: left; transition: transform 1s linear; }
+
+      .actions { display: grid; grid-template-columns: repeat(var(--pw-columns, 3), minmax(0, 1fr)); gap: 8px; }
+      .btn { font: inherit; font-size: 15px; min-width: 0; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; height: 44px; border: 0; border-radius: 12px; cursor: pointer;
+        color: var(--pw-accent); background: color-mix(in srgb, var(--pw-accent) 12%, transparent);
+        transition: transform 100ms ease-out, background-color 150ms ease; -webkit-tap-highlight-color: transparent; }
+      .btn.wide { grid-column: 1 / -1; }
+      .actions[style*="--pw-columns: 4"] .btn:not(.wide) { font-size: 14px; }
+      .btn.primary { color: var(--text-primary-color, #fff); background: var(--pw-accent); }
+      .btn.quiet { color: var(--pw-text); background: var(--pw-fill); font-weight: 500; }
+      .btn:active:not(:disabled), .key:active:not(:disabled) { transform: scale(0.97); }
+      .btn:disabled { opacity: 0.4; cursor: default; }
+      button:focus-visible { outline: 2px solid var(--pw-accent); outline-offset: 2px; }
+
+      .keypad { display: grid; grid-template-columns: repeat(3, 60px); justify-content: center; gap: 10px 22px; }
+      .dots { grid-column: 1 / -1; height: 24px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 14px; }
+      .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--pw-text); }
+      .key { font: inherit; width: 60px; height: 60px; border-radius: 50%; border: 0; cursor: pointer; font-size: 24px; font-weight: 400;
+        color: var(--pw-text); background: var(--pw-fill); font-variant-numeric: tabular-nums;
+        transition: transform 100ms ease-out, background-color 150ms ease; -webkit-tap-highlight-color: transparent; }
+      .key:active { background: color-mix(in srgb, var(--pw-text) 14%, transparent); }
+      .key.text { background: transparent; font-size: 15px; color: var(--pw-muted); display: grid; place-items: center; }
+      .key.text:disabled { visibility: hidden; }
+
+      .error { font-size: 14px; color: var(--pw-alarm); }
+      .recent h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--pw-muted); }
+      .entry { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 14px; line-height: 20px;
+        border-top: 1px solid var(--pw-line); }
+      .entry:first-of-type { border-top: 0; }
+      .entry .when { flex: none; color: var(--pw-muted); font-variant-numeric: tabular-nums; }
+      .empty { color: var(--pw-muted); }
+      @media (prefers-reduced-motion: reduce) { .btn, .key, .track span { transition: none; } }`;
   }
 }
 

@@ -1,7 +1,7 @@
 """The ICT Protege WX integration.
 
 Talks to a Protege WX controller through its built-in web-programming
-interface, so no Automation & Integration licence is needed.
+interface over plain HTTP, so no Automation and Control licence is needed.
 """
 from __future__ import annotations
 

@@ -26,7 +26,7 @@ Every push runs:
 
 ## Releasing
 
-1. Bump `version` in `custom_components/protege_wx/manifest.json` and add a `## x.y.z` section to `CHANGELOG.md`.
+1. Bump `version` in `custom_components/protege_wx/manifest.json` (and `VERSION` in `frontend/protege-alarm-card.js` if the card changed), and add a `## x.y.z` section to `CHANGELOG.md`.
 2. Publish a GitHub release tagged `vx.y.z`. Leave the notes empty to use the changelog section.
 3. The release workflow checks the version and attaches `protege_wx.zip`.
 

@@ -6,6 +6,12 @@ body:
     id: web
     attributes: {label: Web interface and firmware version}
     validations: {required: true}
+  - type: input
+    id: address
+    attributes:
+      label: Web interface address format
+      description: HTTP or HTTPS, and the port. Don't include your IP address.
+      placeholder: "HTTP, port 7377"
   - type: dropdown
     id: result
     attributes:

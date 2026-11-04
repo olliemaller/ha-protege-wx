@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "Connect to a Protege WX controller",
-        "description": "Uses the controller's built-in web interface, so no Automation & Integration licence is needed. Use a dedicated operator with only the permissions Home Assistant needs.",
+        "description": "Uses the controller's built-in web interface, so no Automation and Control licence is needed. Use a dedicated operator with only the permissions Home Assistant needs.",
         "data": {
           "host": "Host",
           "username": "Operator username",
           "password": "Operator password"
         },
         "data_description": {
-          "host": "IP address and port of the controller's web interface, for example 192.168.1.10:7377. Leave out http://.",
+          "host": "IP address and HTTP port of the controller's web interface, for example 192.168.1.10:7377. Leave out http://. HTTPS isn't supported.",
           "username": "The operator name you log in to the web interface with.",
           "password": "The password is never sent to the controller; only a challenge response is."
         }
@@ -31,7 +31,7 @@
           "password": "Operator password"
         },
         "data_description": {
-          "host": "IP address and port of the controller's web interface. Leave out http://."
+          "host": "IP address and HTTP port of the controller's web interface. Leave out http://. HTTPS isn't supported."
         }
       },
       "permissions": {
@@ -47,7 +47,8 @@
       "cannot_connect": "Can't reach a Protege WX web interface at that address. Check the IP address and port.",
       "invalid_auth": "The controller rejected the username or password. Repeated failures lock the operator out for a while.",
       "locked_out": "The operator is locked out for {seconds} seconds after too many failed logins. Wait, then try again.",
-      "unknown": "Unexpected error. Check the Home Assistant log."
+      "unknown": "Unexpected error. Check the Home Assistant log.",
+      "https_not_supported": "This integration talks to the web interface over plain HTTP (usually port 7377), not HTTPS. Enter the HTTP address and port. If your controller only offers HTTPS, or you have the Automation and Control licence, use the ICT Protege integration instead: {https_integration_url}"
     },
     "abort": {
       "already_configured": "This controller is already set up.",

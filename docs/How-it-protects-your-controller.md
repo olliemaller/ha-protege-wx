@@ -2,7 +2,9 @@
 
 ## Why the web interface
 
-ICT's official way to talk to other systems is the **Automation & Integration** service on port 21000. It needs a paid licence, and many WX controllers don't have one. Every WX does have a **web interface**. This integration speaks the same encrypted protocol as those web pages, so if you can log in to your controller in a browser, Home Assistant can control it.
+ICT's official way to talk to other systems is the **Automation and Control** service on port 21000. It needs a paid licence, and many WX controllers don't have one. Every WX does have a **web interface**. This integration speaks the same encrypted protocol as those web pages, so if you can log in to your controller in a browser, Home Assistant can control it.
+
+If your controller has the licence, or only offers its web interface over HTTPS, [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) by caboose014 is the better fit.
 
 ## Being gentle
 

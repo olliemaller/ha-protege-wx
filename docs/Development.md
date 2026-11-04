@@ -33,6 +33,6 @@ Every push runs:
 ## Credits
 
 - Protocol work builds on [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) by Mitchell Johnson (MIT), extended for web interface 2.3.x.
-- Inspired by [caboose014/ICT-Protege-Home-Assistant](https://github.com/caboose014/ICT-Protege-Home-Assistant). If you *do* have the Automation & Integration licence, that integration uses it. No code is shared.
+- [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) by caboose014 inspired this integration, and credits it in return. It connects over HTTPS (firmware 4.00.1676 or later) or through the licensed Automation and Control service, so it's the one to use for those panels. The two projects share no code.
 
 See [CONTRIBUTING](../CONTRIBUTING.md) before opening a pull request.

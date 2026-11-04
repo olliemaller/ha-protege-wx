@@ -2,9 +2,12 @@
 
 ## Requirements
 
-- An ICT Protege WX with its **web interface** turned on. Port 7377 is the usual default.
+- An ICT Protege WX with its **web interface** turned on over **plain HTTP**. Port 7377 is the usual default.
 - Home Assistant **2025.1** or newer. The integration's own icon shows from **2026.3**.
 - A controller **operator** for Home Assistant (see [Setup](Setup.md)).
+
+> [!NOTE]
+> **HTTPS, or the Automation and Control licence?** Use [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) by caboose014 instead. This integration only speaks HTTP. Set up one integration per controller, not both.
 
 Both web protocol versions are supported and **detected automatically**:
 

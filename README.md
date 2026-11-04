@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>Arm, disarm, unlock and watch your ICT Protege WX from Home Assistant and Apple Home.</b><br>
-  Through the controller's own web interface, so <b>no Automation &amp; Integration licence is needed.</b>
+  Through the controller's own web interface, so <b>no Automation and Control licence is needed.</b>
 </p>
 
 <p align="center">
@@ -59,6 +59,18 @@
 
 Also: [Apple Home, wall tablets and Alarmo sync](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Apple-Home-and-Alarmo.md), [actions](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Actions.md), and [how it looks after your controller](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/How-it-protects-your-controller.md).
 
+## Which integration is right for you?
+
+There are two Home Assistant integrations for Protege WX, and they're made to sit side by side. Pick the one that matches your controller:
+
+| Your controller | Use |
+|---|---|
+| Web interface over **plain HTTP** (usually port 7377), including older firmware | **This one** |
+| Web interface over **HTTPS** (firmware 4.00.1676 or later) | **[ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant)** by caboose014 |
+| Has the **Automation and Control** licence | **[ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant)** by caboose014: the panel pushes changes instantly and checks codes itself |
+
+Both work without the licence. This one adds the [alarm card](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Alarm-card.md), [Arm when ready](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Arm-when-ready.md), Alarmo sync, automation triggers and Assist questions. Set up only one of them for each controller, so the panel isn't polled twice.
+
 ## Quick start
 
 1. **Install** from the Marketplace (Home Assistant 2026.11+) or HACS with the button above. [Other ways](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Installation.md).
@@ -66,7 +78,7 @@ Also: [Apple Home, wall tablets and Alarmo sync](https://github.com/olliemaller/
 3. **Add the integration** with the web interface address (for example `192.168.1.10:7377`) and the operator's login.
 4. **Add the card**: search for **Protege WX alarm** in the dashboard editor.
 
-Needs a Protege WX with its web interface turned on and Home Assistant 2025.1 or newer. Tested on web interface 2.3.x; older versions are supported. Please [tell us how it went](https://github.com/olliemaller/ha-protege-wx/issues/new/choose) on yours.
+Needs a Protege WX with its web interface turned on over HTTP, and Home Assistant 2025.1 or newer. Tested on web interface 2.3.x; older versions are supported. Please [tell us how it went](https://github.com/olliemaller/ha-protege-wx/issues/new/choose) on yours.
 
 ## Help and contributing
 
@@ -74,7 +86,12 @@ Needs a Protege WX with its web interface turned on and Home Assistant 2025.1 or
 - Found a security problem? Report it privately; see the [security policy](https://github.com/olliemaller/ha-protege-wx/blob/main/SECURITY.md).
 - Want to help? Read [CONTRIBUTING](https://github.com/olliemaller/ha-protege-wx/blob/main/CONTRIBUTING.md) and the [code of conduct](https://github.com/olliemaller/ha-protege-wx/blob/main/CODE_OF_CONDUCT.md).
 
-Protocol work builds on [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) by Mitchell Johnson. [More credits](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Development.md#credits).
+## Credits
+
+- **[ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) by caboose014**, the Home Assistant integration for Protege that inspired this one. Its author kindly credits and links this project too. If your panel uses HTTPS or has the Automation and Control licence, use theirs.
+- **[protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) by Mitchell Johnson**, whose protocol work this builds on (MIT).
+
+[More credits](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Development.md#credits).
 
 ## Licence
 

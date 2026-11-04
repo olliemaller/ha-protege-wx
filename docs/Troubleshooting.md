@@ -3,6 +3,7 @@
 | Problem | Fix |
 |---|---|
 | **"Invalid authentication"** | Log in to the web interface with the same operator to check the details. Check the operator isn't disabled or locked out. |
+| **"This integration talks to the web interface over plain HTTP"** | You entered an HTTPS address or port 443. Use the web interface's HTTP port (usually 7377). If your controller only offers HTTPS, use [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) instead. |
 | **Can't connect** | Check you can open `http://<host>:<port>` in a browser on the same network as Home Assistant. |
 | **Away won't arm, Home works** | A zone is open (for example someone moving in a room). Check *Ready to arm* or the error message, use [Arm when ready](Arm-when-ready.md), or **Force arm away**. |
 | **No "who did it"** | The operator needs permission to view the event log. Repairs will also tell you. |

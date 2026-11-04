@@ -130,6 +130,33 @@ async def test_user_flow_errors(hass: HomeAssistant, controller) -> None:
     assert controller.sessions == {}  # every attempt cleaned up
 
 
+async def test_user_flow_https_points_elsewhere(hass: HomeAssistant, controller) -> None:
+    """An HTTPS address gets a clear answer, not a puzzling "can't connect"."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    # https:// is refused before anything is sent to the controller.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: f"https://{controller.host}", CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["errors"] == {"base": "https_not_supported"}
+    assert "caboose014" in result["description_placeholders"]["https_integration_url"]
+    assert controller.sessions == {}
+    # Port 443 that doesn't answer as a plain-HTTP web interface: same hint.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: "127.0.0.1:443", CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["errors"] == {"base": "https_not_supported"}
+    # The plain address still works.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
 async def test_reconfigure_and_wrong_controller(hass: HomeAssistant, controller) -> None:
     entry = _entry(controller)
     await _setup(hass, entry)

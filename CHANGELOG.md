@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.2
 
+- Setup now says clearly when an HTTPS address is entered: this integration uses the web interface over plain HTTP, and points HTTPS and licensed (Automation and Control) panels to [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) by caboose014.
+- README: a "Which integration is right for you?" guide and a credit to caboose014's ICT Protege, which credits this project too.
 - Documentation moved to [docs/](docs/README.md) (also published to the wiki); the README is now a short overview with the new alarm card in light and dark.
 - Added a security policy, contributing guide, code of conduct, accessibility statement and pull request template.
 

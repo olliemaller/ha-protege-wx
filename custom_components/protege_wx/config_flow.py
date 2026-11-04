@@ -162,7 +162,28 @@ async def check_permissions(client: ProtegeClient, health: dict[str, str]) -> li
     return missing
 
 
-def _errors_for(err: Exception, placeholders: dict[str, str]) -> dict[str, str]:
+# Another integration covers HTTPS and the licensed Automation and Control service.
+HTTPS_INTEGRATION_URL = "https://github.com/caboose014/ICT-Protege-Home-Assistant"
+
+
+def wants_https(raw_host: str) -> bool:
+    """True when the address is clearly the HTTPS web interface, which this doesn't speak."""
+    raw = raw_host.strip().lower()
+    if raw.startswith("https://"):
+        return True
+    return normalise_host(raw).rsplit(":", 1)[-1] == "443"
+
+
+def _https_error(placeholders: dict[str, str]) -> dict[str, str]:
+    placeholders["https_integration_url"] = HTTPS_INTEGRATION_URL
+    return {"base": "https_not_supported"}
+
+
+def _errors_for(
+    err: Exception, placeholders: dict[str, str], raw_host: str = ""
+) -> dict[str, str]:
+    if isinstance(err, ProtegeConnectionError) and wants_https(raw_host):
+        return _https_error(placeholders)
     if isinstance(err, ProtegeAuthError):
         if err.lockout_seconds:
             placeholders["seconds"] = str(err.lockout_seconds)
@@ -186,11 +207,13 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
             host = normalise_host(user_input[CONF_HOST])
             self._async_abort_entries_match({CONF_HOST: host})
             try:
+                if user_input[CONF_HOST].strip().lower().startswith("https://"):
+                    raise ProtegeConnectionError("HTTPS isn't supported")
                 extra = await validate_login(
                     self.hass, host, user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
                 )
             except Exception as err:  # noqa: BLE001 - mapped to form errors
-                errors = _errors_for(err, placeholders)
+                errors = _errors_for(err, placeholders, user_input[CONF_HOST])
             else:
                 if extra[CONF_SERIAL]:
                     await self.async_set_unique_id(extra[CONF_SERIAL])
@@ -306,11 +329,13 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = normalise_host(user_input[CONF_HOST])
             try:
+                if user_input[CONF_HOST].strip().lower().startswith("https://"):
+                    raise ProtegeConnectionError("HTTPS isn't supported")
                 extra = await validate_login(
                     self.hass, host, user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
                 )
             except Exception as err:  # noqa: BLE001
-                errors = _errors_for(err, placeholders)
+                errors = _errors_for(err, placeholders, user_input[CONF_HOST])
             else:
                 if extra[CONF_SERIAL] and entry.unique_id:
                     await self.async_set_unique_id(extra[CONF_SERIAL])

@@ -3,6 +3,9 @@
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install pytest-homeassistant-custom-component ruff
+# the voice tests also need Assist's requirements:
+python -c "import json,pathlib,homeassistant as h; print('\\n'.join(json.loads((pathlib.Path(h.__file__).parent/'components/conversation/manifest.json').read_text())['requirements']))" > assist.txt
+pip install -r assist.txt
 pytest
 ruff check custom_components tests
 ```
@@ -21,7 +24,7 @@ python tests/smoke.py
 Every push runs:
 
 - **hassfest** and the **HACS** action (which the Marketplace uses);
-- the tests on the oldest supported Home Assistant (2025.6, Python 3.13) and the latest (Python 3.14);
+- the tests on Home Assistant 2025.6 (Python 3.13, the oldest the test harness supports; the declared minimum is 2025.1) and the latest (Python 3.14);
 - the smoke test on the latest stable and beta.
 
 ## Releasing

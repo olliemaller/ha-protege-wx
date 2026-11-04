@@ -713,6 +713,28 @@ async def test_pin_guessing_is_limited(hass: HomeAssistant, controller) -> None:
     assert err.value.translation_key == "pin_locked_out"
 
 
+async def test_force_arm_buttons_follow_the_pin_rule(hass: HomeAssistant, controller) -> None:
+    """A button can't take a PIN, so it can't arm when arming needs one."""
+    entry = _entry(controller, users=[make_user("Alex", "1234")])
+    await _setup(hass, entry)
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call("button", "press", {"entity_id": "button.alarm_force_arm_away"}, blocking=True)
+    assert err.value.translation_key == "force_arm_needs_pin"
+    assert _state(hass, ALARM) == "disarmed"
+    # The action with a code still force-arms.
+    await hass.services.async_call(DOMAIN, "arm", {"entity_id": ALARM, "mode": "away", "force": True, "code": "1234"}, blocking=True)
+    assert _state(hass, ALARM) == "armed_away"
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_force_arm_button_without_pin_rule(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller, users=[make_user("Alex", "1234")], code_arm_required=False)
+    await _setup(hass, entry)
+    await hass.services.async_call("button", "press", {"entity_id": "button.alarm_force_arm_away"}, blocking=True)
+    assert _state(hass, ALARM) == "armed_away"
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_bypass_needs_pin_while_armed(hass: HomeAssistant, controller) -> None:
     entry = _entry(controller, users=[make_user("Alex", "1234")], code_arm_required=False)
     await _setup(hass, entry)

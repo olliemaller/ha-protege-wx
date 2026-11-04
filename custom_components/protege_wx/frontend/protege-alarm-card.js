@@ -6,7 +6,7 @@
  *   # optional:
  *   name: House
  *   show_keypad: true      # when the alarm needs a code
- *   show_activity: true    # recent arming / disarming / doors
+ *   show_activity: true    # the area's recent events
  *   activity_count: 5
  *   show_arm_when_ready: true  # "Arm when ready" while zones are open
  *
@@ -15,7 +15,7 @@
  * device by itself. Ships with the integration; nothing to add to resources.
  */
 
-const VERSION = "0.4.1";
+const VERSION = "0.4.3";
 
 const FEATURE = { HOME: 1, AWAY: 2, NIGHT: 4, VACATION: 32 };
 
@@ -541,7 +541,7 @@ function defineCard() {
       type: "protege-alarm-card",
       name: "Protege WX alarm",
       description: "Arm, disarm, arm when ready, countdown, open zones and recent activity for a Protege WX area.",
-      documentationURL: "https://github.com/olliemaller/ha-protege-wx#alarm-card",
+      documentationURL: "https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Alarm-card.md",
       preview: true,
     });
   }

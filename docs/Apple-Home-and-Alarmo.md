@@ -16,7 +16,7 @@ Diagnostic and configuration entities, including *Hold open* and *Arm when ready
 
 ## Wall tablets and keypad cards
 
-Add users and PINs in the [options](Setup.md#3-options). Any keypad-style alarm card then works: the [Protege WX alarm card](Alarm-card.md), the built-in **Alarm panel** card, or other custom cards. You need a valid PIN to disarm, and to arm unless you turn that off. The user's name shows as `changed_by`.
+Add users and PINs in the [options](Setup.md#3-options). Any keypad-style alarm card then works: the [Protege WX alarm card](Alarm-card.md), the built-in **Alarm panel** card, or other custom cards. You need a valid PIN to disarm, and to arm unless you turn that off. The force-arm buttons can't take a PIN, so they refuse while arming needs one. The user's name shows as `changed_by`.
 
 ## Alarmo
 

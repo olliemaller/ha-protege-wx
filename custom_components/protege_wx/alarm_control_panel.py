@@ -345,8 +345,13 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
         await self._arm(mode, force, code)
 
     async def async_force_arm(self, mode: str) -> None:
-        """Used by the force-arm buttons. Buttons can't carry a code, and arming
-        (never disarming) is what they do."""
+        """Used by the force-arm buttons. Buttons can't carry a code, so when
+        arming needs a PIN they refuse and point to the action instead."""
+        codes = self.coordinator.codes
+        if codes.enabled and codes.arm_requires_code:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="force_arm_needs_pin"
+            )
         await self._arm_now(mode, True)
 
     async def async_sync_to(self, target: str) -> None:

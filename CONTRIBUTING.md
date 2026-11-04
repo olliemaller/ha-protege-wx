@@ -20,6 +20,9 @@ git clone https://github.com/olliemaller/ha-protege-wx
 cd ha-protege-wx
 python -m venv .venv && . .venv/bin/activate
 pip install pytest-homeassistant-custom-component ruff
+# the voice tests also need Assist's requirements:
+python -c "import json,pathlib,homeassistant as h; print('\\n'.join(json.loads((pathlib.Path(h.__file__).parent/'components/conversation/manifest.json').read_text())['requirements']))" > assist.txt
+pip install -r assist.txt
 pytest
 ruff check custom_components tests
 ```
@@ -38,7 +41,7 @@ This talks to people's real alarm systems, so a few rules are firm:
 
 ### Style
 
-- `ruff check` passes.
+- `ruff check custom_components tests` passes (the rules are in `pyproject.toml`, the same as the checks).
 - Support every Home Assistant version from the minimum in `hacs.json` to the current beta. Feature-detect newer APIs rather than requiring them.
 - User-facing text goes in `strings.json` and `translations/en.json`, in plain, short sentences.
 - Documentation is written in Australian English (*colour*, *licence*, *organise*).

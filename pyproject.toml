@@ -1,3 +1,8 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+# The same rules the checks run on every push.
+select = ["E", "F", "W", "B", "UP", "SIM", "I"]
+ignore = ["E501", "B904", "B017"]

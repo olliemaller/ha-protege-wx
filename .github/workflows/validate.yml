@@ -52,7 +52,7 @@ jobs:
           print("\n".join(json.loads(manifest.read_text())["requirements"]))
           PY
           pip install -r assist-requirements.txt
-      - run: ruff check --select E,F,W,B,UP,SIM,I --ignore E501,B904,B017 custom_components tests
+      - run: ruff check custom_components tests
       - run: pytest -q
 
   # Boots a real Home Assistant core (the newest release, and the beta) against

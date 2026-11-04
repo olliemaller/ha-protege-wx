@@ -18,7 +18,7 @@ entity: alarm_control_panel.alarm
 name: House
 show_keypad: true          # when a PIN is needed
 show_arm_when_ready: true  # "Arm when ready" while zones are open
-show_activity: true        # recent arming, disarming and doors
+show_activity: true        # the area's recent events
 activity_count: 5
 ```
 
@@ -31,10 +31,10 @@ activity_count: 5
 | **Modes** | Away, Home, Night and Holidays, only the ones the area allows. When armed, a single Disarm button. |
 | **Arm when ready** | Shown while zones are open. Asks for the PIN first when arming needs one. Changes to **Stop waiting** while it waits. |
 | **Keypad** | Shown when a PIN is needed. |
-| **Recent** | The last few arming, disarming and door events from the logbook. |
+| **Recent** | The area's last few events from the past 3 days: armed, arming, disarmed, failed to arm and alarm, with who did it. |
 
 It finds the area's open-zones, delay, alarm-cause and arm-when-ready entities by itself.
 
 ## If it shows "Configuration error"
 
-Update to 0.3.1 or later, restart Home Assistant, then refresh the browser or app (in the Companion app: **Settings > Reset frontend cache**).
+Update to the latest version, restart Home Assistant, then refresh the browser or app (in the Companion app: **Settings > Reset frontend cache**).

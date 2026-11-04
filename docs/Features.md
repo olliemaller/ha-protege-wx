@@ -1,6 +1,8 @@
 # Features
 
-Each area, door and chosen output is its own device; inputs belong to the controller.
+Each area, door, input and chosen output is its own device under the controller. Trouble inputs and the *Last seen* sensors belong to the controller itself.
+
+Some entities start disabled, so they don't clutter your dashboards: everything for an area with no inputs (such as a "System" area), inputs that belong to no area, *Forced open* and *Left open* on doors without a door-position input, and *Memory used*. Turn them on under **Settings > Devices & services > Entities** if you want them.
 
 ## Areas
 
@@ -10,17 +12,17 @@ Each area, door and chosen output is its own device; inputs belong to the contro
   - During the exit delay it shows the mode being armed, so Apple Home shows Home and Away correctly. An option switches this to "Arming".
   - *Pending* during the entry delay. *Triggered* only while an alarm or siren is actually active, not just held in alarm memory.
 - **`changed_by`**: the keypad user, card or Home Assistant user, read from the controller's event log.
-- **Arm-failure feedback.** When the controller refuses to arm, from Home Assistant or a keypad, you get:
-  - an error naming the open zones;
-  - a `protege_wx_failed_to_arm` event;
-  - optionally, a notification.
+- **Arm-failure feedback.** When the controller refuses to arm, you get:
+  - an error naming the open zones (when the arm came from Home Assistant);
+  - a `protege_wx_failed_to_arm` event, from Home Assistant or a keypad;
+  - a notification (on by default; turn it off in the options).
 - **Ready to arm** sensors for away and for stay. Stay-type zones are ignored for stay. The open zones are listed as an attribute.
 - **Open zones** sensor: how many zones are open right now, with their names.
 - **Delay ends** sensor: when the exit or entry delay runs out, so dashboards can count down. Delays are read from the controller, or set in the options.
 - **Alarm cause** sensor: the zone that set the alarm off, kept until the area is disarmed.
 - **Arm when ready** switch and mode select. See [Arm when ready](Arm-when-ready.md).
 - **Walk test** switch: zones chime as you test them instead of setting off the alarm.
-- **Buttons:** Force arm away, Force arm night and Silence siren.
+- **Buttons:** Force arm away, Force arm night (when Night arms instantly) and Silence siren. When arming needs a PIN, the force-arm buttons refuse; use the [`protege_wx.arm`](Actions.md) action with `force: true` and a `code` instead.
 - **Events entity:** armed, arming started or cancelled, failed to arm, disarmed and alarm, each with who did it.
 
 ## Doors
@@ -29,7 +31,7 @@ Each area, door and chosen output is its own device; inputs belong to the contro
 - **Hold open** switch, which latches the door unlocked until switched off.
 - **Events entity:** access granted or denied (with the user and whether a card or PIN was used), unlocked, locked, opened, closed, forced open and left open.
 - **Visitor unlock**: a button and an action that hold the door unlocked for 15 minutes (or as long as you choose), then lock it. Locking it sooner cancels it, and it still locks after a restart.
-- **Forced open**, **Left open** and **Position** (open/closed) sensors, when the door has a door-position input.
+- **Position** (open/closed) sensor, when the door has a door-position input, and **Forced open** and **Left open** sensors (disabled by default on doors without one).
 - **Last seen** sensor per person who badges in: when, at which door, and card or PIN. Created the first time each person is seen.
 
 ## Inputs (zones)
@@ -37,19 +39,32 @@ Each area, door and chosen output is its own device; inputs belong to the contro
 - **Motion, door, window, smoke, moisture** and other types, chosen per input. A tamper or short reads as *on*, so a damaged sensor never looks quiet.
 - **Last triggered** sensor: when the zone last opened, kept across restarts.
 - **Tamper** sensor (diagnostic).
-- **Bypass** selector: not bypassed, until disarmed, or permanent.
+- **Bypass** selector: not bypassed, until disarmed, or permanent. With PINs set up, it only works while the zone's area is disarmed; use the [`protege_wx.bypass`](Actions.md) action with a `code` for an armed area.
 
 ## Controller
 
 - **Trouble inputs** such as mains failure, low battery, siren tamper and module offline.
 - **Alarm fault**: one sensor that turns on if anything needs attention.
-- **Supply voltage**, **Last event** and memory use.
+- **Supply voltage**, **Last event** and **Memory used** (diagnostic, disabled by default).
 - **Connection** sensor (diagnostic): Connected, Reconnecting, Backing off or Login failed, with the last successful update, protocol, response time and recent logins.
 - **Events** entity for the controller.
 
 ## Outputs
 
 Choose any outputs (PGMs) in the options. Each becomes its own device with a switch, and can be pulsed for a set time with [`protege_wx.pulse_output`](Actions.md).
+
+## Useful attributes
+
+For templates and automations:
+
+| Entity | Attributes |
+|---|---|
+| Alarm panel | `changed_by`, `controller_state`, `flags`, `alarms_in_memory`, `open_zones` |
+| Ready to arm, Open zones | `zones` / `open_zones`: the names of the open zones |
+| Delay ends | `phase` (exit or entry), `exit_delay`, `entry_delay` |
+| Lock | `held_open`, `visitor_until` |
+| Arm when ready switch | `mode`, `until`, `open_zones` |
+| Events entities | `event_type`, `user`, `by`, `method`, `subject`, `text` |
 
 ## Logbook
 

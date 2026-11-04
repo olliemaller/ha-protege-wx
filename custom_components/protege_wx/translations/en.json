@@ -10,7 +10,7 @@
           "password": "Operator password"
         },
         "data_description": {
-          "host": "IP address and HTTP port of the controller's web interface, for example 192.168.1.10:7377. Leave out http://. HTTPS isn't supported.",
+          "host": "IP address and HTTP port of the controller's web interface, for example 192.168.1.10:7377. http:// is optional. HTTPS isn't supported.",
           "username": "The operator name you log in to the web interface with.",
           "password": "The password is never sent to the controller; only a challenge response is."
         }
@@ -31,7 +31,7 @@
           "password": "Operator password"
         },
         "data_description": {
-          "host": "IP address and HTTP port of the controller's web interface. Leave out http://. HTTPS isn't supported."
+          "host": "IP address and HTTP port of the controller's web interface. http:// is optional. HTTPS isn't supported."
         }
       },
       "permissions": {
@@ -487,6 +487,9 @@
     },
     "arm_when_ready_busy": {
       "message": "The area is being armed right now. Try again in a moment."
+    },
+    "force_arm_needs_pin": {
+      "message": "Arming needs a PIN, and a button can't take one. Use the protege_wx.arm action with force: true and a code."
     }
   },
   "services": {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3
+
+- **Force arm buttons follow the PIN rule.** When arming needs a PIN, the Force arm away and Force arm night buttons now refuse (a button can't take a PIN) instead of arming without one. Use the `protege_wx.arm` action with `force: true` and a `code`. If you don't require a PIN to arm, nothing changes.
+- The alarm card's help link in the card picker now opens the card's documentation.
+- Documentation checked line by line against the code and corrected: event fields, which entities start disabled, option ranges, PIN rules, Arm when ready after a restart, the bypass PIN rule, voice with AI agents, and more.
+- The setup form says `http://` is optional.
+
 ## 0.4.2
 
 - Setup now says clearly when an HTTPS address is entered: this integration uses the web interface over plain HTTP, and points HTTPS and licensed (Automation and Control) panels to [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) by caboose014.

@@ -1,6 +1,6 @@
 # Voice (Assist)
 
-Ask Assist, in English. It works with every voice assistant connected to Home Assistant's Assist, and answers for every controller you've added.
+Ask Assist, in English. It works with Home Assistant's built-in conversation agent (an AI agent needs **Prefer handling commands locally** turned on), and answers for every controller you've added.
 
 | Ask | Answer |
 |---|---|

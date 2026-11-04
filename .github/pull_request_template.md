@@ -22,6 +22,6 @@
 - [ ] No extra logins, sessions or polling, and no secrets in logs or diagnostics
 - [ ] User-facing text is in `strings.json` and `translations/en.json`
 - [ ] Docs in `docs/` and `CHANGELOG.md` are updated
-- [ ] I've read [CONTRIBUTING](../CONTRIBUTING.md) and agree to the [code of conduct](../CODE_OF_CONDUCT.md)
+- [ ] I've read [CONTRIBUTING](https://github.com/olliemaller/ha-protege-wx/blob/main/CONTRIBUTING.md) and agree to the [code of conduct](https://github.com/olliemaller/ha-protege-wx/blob/main/CODE_OF_CONDUCT.md)
 
 <!-- Found a security problem? Don't open a pull request; see SECURITY.md. -->

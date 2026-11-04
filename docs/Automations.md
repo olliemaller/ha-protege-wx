@@ -35,7 +35,7 @@ actions:
       area_id: hallway
 ```
 
-The trigger variables include `user`, `method` (`card` or `pin`), `event_type`, `subject` (the door or area) and `text` (the controller's own line).
+The trigger variables include `user`, `by`, `method` (`card` or `pin`), `event_type`, `subject` (the door or area), `text` (the controller's own line), `entity_id`, `from_state` and `to_state`.
 
 ## Event entities
 
@@ -62,7 +62,7 @@ actions:
 
 | Event | When |
 |---|---|
-| `protege_wx_event` | Every meaningful event-log line: `kind`, `subject`, `type`, `by`, `user`, `method` |
+| `protege_wx_event` | Every meaningful event-log line: `kind`, `subject`, `type`, `by`, `mode`, `method`, `text`, `time` and `entry_id` |
 | `protege_wx_failed_to_arm` | An arm attempt fails. Includes `area` and the `zones` that stopped it |
 | `protege_wx_emergency` | A duress, panic or medical alarm: `type`, `area`, `by`, `text` |
 | `protege_wx_arm_when_ready` | An [Arm when ready](Arm-when-ready.md#results) wait finished |
@@ -73,9 +73,9 @@ actions:
 
 One automation that sends phone notifications, with buttons that act on them (needs the Companion app):
 
-- the entry delay starting, with **Disarm**, and the alarm going off, with **Disarm** (type your PIN in the notification) and **Silence**;
+- the entry delay starting, with **Disarm**, and the alarm going off, with **Disarm** and **Silence** (type your PIN in the notification to disarm);
 - duress, panic and medical alarms, as critical alerts;
-- a failed arm with the zones that stopped it, with **Retry when closed** and **Force arm**;
+- a failed arm with the zones that stopped it, with **Retry when closed** and **Force arm** (not offered after a failed Home arm);
 - a **bedtime reminder** when everyone's home and the alarm is off, with **Arm home**;
 - a door **left unlocked** for 10 minutes, with **Lock**;
 - a door forced or left open;

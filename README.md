@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  <a href="https://www.home-assistant.io/integrations/marketplace/"><img src="https://img.shields.io/badge/Marketplace-Custom-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=0A0A0F" alt="Home Assistant Marketplace"></a>
-  <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=0A0A0F" alt="Release"></a>
-  <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=0A0A0F" alt="Checks"></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-185FA5?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=0A0A0F" alt="Home Assistant 2025.1+">
-  <a href="https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=185FA5&labelColor=0A0A0F" alt="Licence"></a>
+  <a href="https://www.home-assistant.io/integrations/marketplace/"><img src="https://img.shields.io/badge/Marketplace-Custom-FFFFFF?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=000000" alt="Home Assistant Marketplace"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=FFFFFF&labelColor=000000" alt="Release"></a>
+  <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=000000" alt="Checks"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-FFFFFF?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=000000" alt="Home Assistant 2025.1+">
+  <a href="https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=FFFFFF&labelColor=000000" alt="Licence"></a>
 </p>
 
 <p align="center">

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- New black-and-white icon, logo and banner, with dark-mode versions of the icon and logo for Home Assistant's integration list.
+- README badges now match the black-and-white look.
+
 ## 0.4.3
 
 - **Force arm buttons follow the PIN rule.** When arming needs a PIN, the Force arm away and Force arm night buttons now refuse (a button can't take a PIN) instead of arming without one. Use the `protege_wx.arm` action with `force: true` and a `code`. If you don't require a PIN to arm, nothing changes.

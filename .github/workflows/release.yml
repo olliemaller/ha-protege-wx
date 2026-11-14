@@ -1,9 +1,14 @@
 name: Release
 
-# When a release is published: check the tag matches the manifest version,
-# then attach protege_wx.zip (the integration folder) for manual installs.
+# Two ways to release:
+# - Bump "version" in manifest.json and add its CHANGELOG.md section, then push to main.
+#   The "publish" job creates the tag and release (with notes and the zip) by itself.
+# - Or publish a release by hand on GitHub; the "zip" job checks the version and attaches the zip.
 
 on:
+  push:
+    branches: [main]
+    paths: ["custom_components/protege_wx/manifest.json"]
   release:
     types: [published]
 
@@ -11,7 +16,55 @@ permissions:
   contents: write
 
 jobs:
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is this version already released?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('custom_components/protege_wx/manifest.json'))['version'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released"; echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build protege_wx.zip
+        if: steps.check.outputs.new == 'true'
+        run: |
+          cd custom_components/protege_wx
+          find . -name '__pycache__' -prune -exec rm -rf {} +
+          zip -r -X "$GITHUB_WORKSPACE/protege_wx.zip" . -x '*.pyc'
+
+      - name: Release notes from CHANGELOG.md
+        if: steps.check.outputs.new == 'true'
+        run: |
+          version="${{ steps.check.outputs.version }}"
+          awk -v v="$version" '
+            /^## / { if (found) exit; if (index($0, "## " v) == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## $version' section. Add one before bumping the version."
+            exit 1
+          fi
+
+      - name: Publish v${{ steps.check.outputs.version }}
+        if: steps.check.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.check.outputs.version }}"
+          gh release create "v$v" protege_wx.zip --target "$GITHUB_SHA" --title "v$v" --notes-file notes.md
+
   zip:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

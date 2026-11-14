@@ -30,8 +30,9 @@ Every push runs:
 ## Releasing
 
 1. Bump `version` in `custom_components/protege_wx/manifest.json` (and `VERSION` in `frontend/protege-alarm-card.js` if the card changed), and add a `## x.y.z` section to `CHANGELOG.md`.
-2. Publish a GitHub release tagged `vx.y.z`. Leave the notes empty to use the changelog section.
-3. The release workflow checks the version and attaches `protege_wx.zip`.
+2. Push to `main`. The release workflow sees the new version, creates the `vx.y.z` tag and release with the changelog section as its notes, and attaches `protege_wx.zip`. The Marketplace and HACS then offer the update.
+
+You can still publish a release by hand on GitHub. The workflow then checks the version and attaches the zip.
 
 ## Credits
 

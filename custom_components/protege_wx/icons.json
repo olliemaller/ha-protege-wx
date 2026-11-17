@@ -55,6 +55,24 @@
         "state": {
           "off": "mdi:shield-sync-outline"
         }
+      },
+      "allow_arm_away": {
+        "default": "mdi:shield-lock",
+        "state": {
+          "off": "mdi:shield-off-outline"
+        }
+      },
+      "allow_arm_home": {
+        "default": "mdi:shield-home",
+        "state": {
+          "off": "mdi:shield-off-outline"
+        }
+      },
+      "allow_arm_night": {
+        "default": "mdi:shield-moon",
+        "state": {
+          "off": "mdi:shield-off-outline"
+        }
       }
     },
     "select": {
@@ -95,6 +113,11 @@
       "last_seen": {
         "default": "mdi:account-clock-outline"
       }
+    },
+    "calendar": {
+      "alarm_history": {
+        "default": "mdi:calendar-lock"
+      }
     }
   },
   "services": {
@@ -115,6 +138,9 @@
     },
     "arm_when_ready": {
       "service": "mdi:shield-sync"
+    },
+    "set_user_enabled": {
+      "service": "mdi:account-key"
     }
   },
   "triggers": {

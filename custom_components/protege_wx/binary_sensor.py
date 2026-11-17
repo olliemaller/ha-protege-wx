@@ -1,6 +1,7 @@
 """Binary sensors: inputs, tamper, door position, troubles, readiness and faults."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import voluptuous as vol
@@ -9,10 +10,12 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
@@ -91,15 +94,41 @@ class _InputBase(_ProtegeBinarySensor):
         return super().available and status is not None and status.known
 
 
-class ProtegeInputSensor(_InputBase):
+class ProtegeInputSensor(_InputBase, RestoreEntity):
     """An input (zone). On while open; tamper or short also reads as on, so a
-    damaged sensor never looks quiet."""
+    damaged sensor never looks quiet. Counts how often it opened today
+    (``trips_today``), to find a zone that keeps triggering; the time it last
+    triggered is its own "Last triggered" sensor."""
 
     _attr_name = None
+    _unrecorded_attributes = frozenset({"trips_today", "trips_day"})
 
     def __init__(self, coordinator: ProtegeCoordinator, info: InputInfo, device_class: str) -> None:
         super().__init__(coordinator, info, None)
         self._attr_device_class = BinarySensorDeviceClass(device_class)
+        self._was_open: bool | None = None
+        self._trips_today = 0
+        self._trips_day: date | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.attributes.get("trips_day") == dt_util.now().date().isoformat():
+            self._trips_today = int(last.attributes.get("trips_today") or 0)
+            self._trips_day = dt_util.now().date()
+        self._was_open = self.is_on
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        now_open = self.is_on
+        if now_open and self._was_open is False:
+            now = dt_util.now()
+            if self._trips_day != now.date():
+                self._trips_day, self._trips_today = now.date(), 0
+            self._trips_today += 1
+        if now_open is not None:
+            self._was_open = now_open
+        super()._handle_coordinator_update()
 
     @property
     def is_on(self) -> bool | None:
@@ -111,7 +140,13 @@ class ProtegeInputSensor(_InputBase):
         status = self._status
         if status is None:
             return {}
-        return {"controller_state": status.state, "bypass": status.bypass}
+        today = dt_util.now().date()
+        return {
+            "controller_state": status.state,
+            "bypass": status.bypass,
+            "trips_today": self._trips_today if self._trips_day == today else 0,
+            "trips_day": today.isoformat(),
+        }
 
     async def async_service_bypass(self, mode: str, code: str | None = None) -> None:
         await self.coordinator.async_authorise_bypass(self.rec_id, code)

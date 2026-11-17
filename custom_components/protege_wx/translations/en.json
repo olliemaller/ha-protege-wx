@@ -78,7 +78,8 @@
           "code_arm_required": "Require a PIN to arm",
           "outputs": "Outputs to add as switches",
           "visitor_minutes": "Visitor unlock time",
-          "arm_when_ready_minutes": "Arm when ready time limit"
+          "arm_when_ready_minutes": "Arm when ready time limit",
+          "idle_scan_interval": "Update interval when quiet"
         },
         "data_description": {
           "scan_interval": "How often to read area and zone status and the event log. 1 second is quick and light; doors and troubles are read at least every 5 seconds.",
@@ -87,7 +88,8 @@
           "code_arm_required": "Only applies once you add users. Disarming always needs a PIN when users exist.",
           "outputs": "Only outputs you pick are added. Leave out keypad LEDs, beepers, the bell and door locks.",
           "visitor_minutes": "How long a door's \"Visitor unlock\" button (and the protege_wx.visitor_unlock action, unless it says otherwise) holds the door unlocked before locking it again.",
-          "arm_when_ready_minutes": "How long an area's \"Arm when ready\" switch (and the protege_wx.arm_when_ready action, unless it says otherwise) waits for the zones to close before giving up."
+          "arm_when_ready_minutes": "How long an area's \"Arm when ready\" switch (and the protege_wx.arm_when_ready action, unless it says otherwise) waits for the zones to close before giving up.",
+          "idle_scan_interval": "How often to check the controller when nothing has happened for a minute. It switches to the normal interval as soon as a zone, door, delay or event changes. Set it the same as the update interval to always poll fast."
         }
       },
       "inputs": {
@@ -110,10 +112,20 @@
           "code": "PIN",
           "confirm_code": "PIN again",
           "can_arm": "Can arm",
-          "can_disarm": "Can disarm"
+          "can_disarm": "Can disarm",
+          "enabled": "PIN works",
+          "days": "Days",
+          "from_time": "From",
+          "until_time": "Until",
+          "expires": "Last day"
         },
         "data_description": {
-          "code": "At least 4 digits. Only a salted hash is stored."
+          "code": "At least 4 digits. Only a salted hash is stored.",
+          "enabled": "Turn off to stop this PIN without deleting it.",
+          "days": "The PIN only works on these days.",
+          "from_time": "Optional. The PIN works from this time each day.",
+          "until_time": "Optional. Earlier than From means overnight (for example 22:00 to 06:00).",
+          "expires": "Optional. The PIN stops working after this day, for a tradesperson or guest."
         }
       },
       "edit_user": {
@@ -128,7 +140,19 @@
           "code": "New PIN (leave blank to keep)",
           "confirm_code": "New PIN again",
           "can_arm": "Can arm",
-          "can_disarm": "Can disarm"
+          "can_disarm": "Can disarm",
+          "enabled": "PIN works",
+          "days": "Days",
+          "from_time": "From",
+          "until_time": "Until",
+          "expires": "Last day"
+        },
+        "data_description": {
+          "enabled": "Turn off to stop this PIN without deleting it.",
+          "days": "The PIN only works on these days.",
+          "from_time": "Optional. The PIN works from this time each day.",
+          "until_time": "Optional. Earlier than From means overnight (for example 22:00 to 06:00).",
+          "expires": "Optional. The PIN stops working after this day, for a tradesperson or guest."
         }
       },
       "remove_user": {
@@ -233,6 +257,17 @@
         "away": "Away",
         "home": "Home"
       }
+    },
+    "weekday": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
     }
   },
   "entity": {
@@ -303,6 +338,15 @@
       },
       "arm_when_ready": {
         "name": "Arm when ready"
+      },
+      "allow_arm_away": {
+        "name": "Allow arm away"
+      },
+      "allow_arm_home": {
+        "name": "Allow arm home"
+      },
+      "allow_arm_night": {
+        "name": "Allow arm night"
       }
     },
     "sensor": {
@@ -434,6 +478,16 @@
           }
         }
       }
+    },
+    "alarm_control_panel": {
+      "all_areas": {
+        "name": "All areas"
+      }
+    },
+    "calendar": {
+      "alarm_history": {
+        "name": "Alarm history"
+      }
     }
   },
   "exceptions": {
@@ -493,6 +547,21 @@
     },
     "force_arm_needs_pin": {
       "message": "Arming needs a PIN, and a button can't take one. Use the protege_wx.arm action with force: true and a code."
+    },
+    "user_disabled": {
+      "message": "{user}'s PIN is turned off."
+    },
+    "user_expired": {
+      "message": "{user}'s PIN has expired."
+    },
+    "outside_schedule": {
+      "message": "{user}'s PIN doesn't work at this time."
+    },
+    "user_not_found": {
+      "message": "No user called {user}."
+    },
+    "mode_not_allowed": {
+      "message": "Arming {area} in {mode} mode is turned off. Turn on its \"Allow arm {mode}\" switch to use it."
     }
   },
   "services": {
@@ -573,6 +642,20 @@
         "minutes": {
           "name": "Minutes",
           "description": "How long to keep it unlocked. Leave out to use the time set in the integration's options (15 minutes unless changed)."
+        }
+      }
+    },
+    "set_user_enabled": {
+      "name": "Turn a PIN on or off",
+      "description": "Turn a user's PIN on or off without deleting it, for example a cleaner's PIN only on cleaning days.",
+      "fields": {
+        "user": {
+          "name": "User",
+          "description": "The user name, as set up in the options."
+        },
+        "enabled": {
+          "name": "PIN works",
+          "description": "On to allow the PIN, off to stop it."
         }
       }
     }

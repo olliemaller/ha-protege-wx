@@ -22,6 +22,9 @@ blueprint:
     - **Doors forced or left open**, and **controller faults** such as mains
     failure or a low battery.
 
+    - Optionally a **camera snapshot** on alarm, entry delay, emergency and
+    door forced notifications.
+
 
     Buttons need the Home Assistant Companion app. PINs typed into a
     notification are checked by the integration exactly like a keypad card.
@@ -78,6 +81,23 @@ blueprint:
           default: true
           selector:
             boolean:
+
+    camera_section:
+      name: Camera snapshot
+      icon: mdi:cctv
+      collapsed: true
+      input:
+        camera:
+          name: Camera to attach
+          description: >-
+            Optional. Its picture is attached to alarm, entry delay, emergency
+            and door forced notifications, so you can see what's going on
+            straight from the notification.
+          default: []
+          selector:
+            entity:
+              filter:
+                domain: camera
 
     bedtime_section:
       name: Bedtime reminder
@@ -199,6 +219,10 @@ variables:
   services: >-
     {{ services_text.split('\n') | map('trim') | reject('equalto', '') | list }}
   pin_to_arm: !input pin_to_arm
+  camera_input: !input camera
+  camera: "{{ camera_input if camera_input is string else (camera_input | first if camera_input else '') }}"
+  with_picture: >-
+    {{ camera != '' and trigger.id in ['alarm', 'entry', 'emergency', 'door'] }}
   want_alarm: !input notify_alarm
   want_entry: !input notify_entry
   want_emergency: !input notify_emergency
@@ -292,13 +316,12 @@ actions:
           data:
             title: "{{ title | trim }}"
             message: "{{ message | trim }}"
-            data:
-              tag: "{{ tag }}"
-              actions: "{{ buttons }}"
-              push:
-                interruption-level: "{{ level }}"
-              ttl: 0
-              priority: high
+            data: >-
+              {% set d = {'tag': tag, 'actions': buttons, 'push': {'interruption-level': level},
+                          'ttl': 0, 'priority': 'high'} %}
+              {% if with_picture %}{% set d = dict(d, image='/api/camera_proxy/' ~ camera,
+                                                     entity_id=camera) %}{% endif %}
+              {{ d }}
 
   - if:
       - condition: template

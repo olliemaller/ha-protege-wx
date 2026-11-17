@@ -59,7 +59,10 @@ async def async_setup_entry(
         for area in data.site.areas.values()
     ]
     data.areas = {entity.rec_id: entity for entity in entities}
-    async_add_entities(entities)
+    extra: list[AlarmControlPanelEntity] = []
+    if sum(1 for area in data.site.areas.values() if area.has_inputs is not False) > 1:
+        extra.append(ProtegeAllAreas(data.coordinator, codes))
+    async_add_entities([*entities, *extra])
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service(
         SERVICE_ARM,
@@ -79,6 +82,14 @@ async def async_setup_entry(
         },
         "async_service_arm_when_ready",
     )
+    platform.async_register_entity_service(
+        SERVICE_SET_USER_ENABLED,
+        {vol.Required("user"): cv.string, vol.Required("enabled"): cv.boolean},
+        "async_service_set_user_enabled",
+    )
+
+
+SERVICE_SET_USER_ENABLED = "set_user_enabled"
 
 
 class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
@@ -114,7 +125,7 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
             features |= AlarmControlPanelEntityFeature.ARM_HOME
         if self.night_mode != "off":
             features |= AlarmControlPanelEntityFeature.ARM_NIGHT
-        self._attr_supported_features = features
+        self._all_features = features
         if codes.enabled:
             self._attr_code_format = CodeFormat.NUMBER
             self._attr_code_arm_required = codes.arm_requires_code
@@ -122,6 +133,25 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
             self._attr_code_format = None
             self._attr_code_arm_required = False
         self._changed_by: str | None = None
+
+    @property
+    def supported_features(self) -> AlarmControlPanelEntityFeature:
+        """The modes this area offers, less any turned off with its "Allow arm" switches."""
+        features = self._all_features
+        blocked = self.coordinator.blocked_modes.get(self.rec_id, set())
+        if "away" in blocked:
+            features &= ~(AlarmControlPanelEntityFeature.ARM_AWAY | AlarmControlPanelEntityFeature.ARM_VACATION)
+        if "home" in blocked:
+            features &= ~AlarmControlPanelEntityFeature.ARM_HOME
+        if "night" in blocked:
+            features &= ~AlarmControlPanelEntityFeature.ARM_NIGHT
+        return features
+
+    def ha_mode(self, mode: str, as_state: AlarmControlPanelState | None) -> str:
+        """Which Home Assistant mode an arm request is: away, home or night."""
+        if as_state == AlarmControlPanelState.ARMED_NIGHT or mode == "instant":
+            return "night"
+        return "home" if mode == "stay" else "away"
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -307,6 +337,13 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="force_stay_unsupported"
             )
+        wanted = self.ha_mode(mode, as_state)
+        if wanted in self.coordinator.blocked_modes.get(self.rec_id, set()):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="mode_not_allowed",
+                translation_placeholders={"area": self.area.name, "mode": wanted},
+            )
         if authorise:
             await self._authorise(code, "arm")
         self._requested = (mode, as_state) if as_state else None
@@ -339,6 +376,25 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
 
     async def async_alarm_arm_vacation(self, code: str | None = None) -> None:
         await self._arm("away", False, code, as_state=AlarmControlPanelState.ARMED_VACATION)
+
+    async def async_service_set_user_enabled(self, user: str, enabled: bool) -> None:
+        """Turn a user's PIN on or off without opening the options."""
+        from .const import OPT_USERS, USER_ENABLED, USER_NAME
+
+        entry = self.coordinator.config_entry
+        users = [dict(u) for u in entry.options.get(OPT_USERS, [])]
+        match = next((u for u in users if u[USER_NAME].casefold() == user.strip().casefold()), None)
+        if match is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="user_not_found",
+                translation_placeholders={"user": user},
+            )
+        if match.get(USER_ENABLED, True) == enabled:
+            return
+        match[USER_ENABLED] = enabled
+        # Takes effect straight away; saved in the options for after a restart.
+        self.coordinator.codes.users = users
+        self.hass.config_entries.async_update_entry(entry, options={**entry.options, OPT_USERS: users})
 
     async def async_service_arm(self, mode: str, force: bool = False, code: str | None = None) -> None:
         """The protege_wx.arm action: arm in a mode, optionally forcing."""
@@ -425,3 +481,99 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
 
     async def async_silence(self) -> None:
         await self._command(self.coordinator.client.silence_area(self.rec_id))
+
+
+# Most urgent first: the all-areas panel shows the first state any area is in.
+_URGENCY = (
+    AlarmControlPanelState.TRIGGERED,
+    AlarmControlPanelState.PENDING,
+    AlarmControlPanelState.ARMING,
+    AlarmControlPanelState.DISARMING,
+)
+
+
+class ProtegeAllAreas(ProtegeEntity, AlarmControlPanelEntity):
+    """One panel for every area: arm or disarm the whole site in one go.
+
+    Shows triggered / pending / arming if any area is; an armed mode when every
+    area is armed the same way; disarmed when all are; otherwise "armed custom
+    bypass", meaning partly armed. Each action goes through the areas' own
+    panels, so PINs, modes and "Allow arm" switches all still apply.
+    """
+
+    _attr_translation_key = "all_areas"
+
+    def __init__(self, coordinator: ProtegeCoordinator, codes: UserCodes) -> None:
+        super().__init__(coordinator, "controller", 0, key="all_areas")
+        if codes.enabled:
+            self._attr_code_format = CodeFormat.NUMBER
+            self._attr_code_arm_required = codes.arm_requires_code
+        else:
+            self._attr_code_format = None
+            self._attr_code_arm_required = False
+
+    def _areas(self) -> list[ProtegeArea]:
+        panels = self.coordinator.config_entry.runtime_data.areas.values()
+        return [p for p in panels if p.area.has_inputs is not False and p.enabled]
+
+    @property
+    def supported_features(self) -> AlarmControlPanelEntityFeature:
+        areas = self._areas()
+        if not areas:
+            return AlarmControlPanelEntityFeature(0)
+        features = areas[0].supported_features
+        for area in areas[1:]:
+            features &= area.supported_features
+        return features
+
+    @property
+    def alarm_state(self) -> AlarmControlPanelState | None:
+        states = [area.alarm_state for area in self._areas()]
+        if not states or any(state is None for state in states):
+            return None
+        for urgent in _URGENCY:
+            if urgent in states:
+                return urgent
+        if len(set(states)) == 1:
+            return states[0]
+        return AlarmControlPanelState.ARMED_CUSTOM_BYPASS  # partly armed
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "areas": {
+                area.area.name: area.alarm_state.value if area.alarm_state else None
+                for area in self._areas()
+            }
+        }
+
+    async def _each(self, action: str, code: str | None) -> None:
+        """Run the action on every area; report the first failure after trying them all."""
+        first_error: Exception | None = None
+        for area in self._areas():
+            if action != "disarm" and area.alarm_state not in (AlarmControlPanelState.DISARMED, None):
+                continue  # already armed or arming: leave it
+            if action == "disarm" and area.alarm_state == AlarmControlPanelState.DISARMED:
+                continue
+            try:
+                await getattr(area, f"async_alarm_{action}")(code)
+            except HomeAssistantError as err:
+                first_error = first_error or err
+        self.async_write_ha_state()
+        if first_error:
+            raise first_error
+
+    async def async_alarm_disarm(self, code: str | None = None) -> None:
+        await self._each("disarm", code)
+
+    async def async_alarm_arm_away(self, code: str | None = None) -> None:
+        await self._each("arm_away", code)
+
+    async def async_alarm_arm_home(self, code: str | None = None) -> None:
+        await self._each("arm_home", code)
+
+    async def async_alarm_arm_night(self, code: str | None = None) -> None:
+        await self._each("arm_night", code)
+
+    async def async_alarm_arm_vacation(self, code: str | None = None) -> None:
+        await self._each("arm_vacation", code)

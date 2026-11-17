@@ -11,6 +11,11 @@ CONF_SERIAL: Final = "serial"
 
 # Options
 OPT_SCAN_INTERVAL: Final = "scan_interval"  # fast loop, seconds
+# Slower poll while nothing is happening; equal to the fast loop turns it off.
+OPT_IDLE_SCAN_INTERVAL: Final = "idle_scan_interval"
+DEFAULT_IDLE_SCAN_INTERVAL: Final = 2
+# How long the fast loop keeps going after the last sign of activity.
+BUSY_SECONDS: Final = 60
 OPT_SHOW_ARMING: Final = "show_arming"
 OPT_OUTPUTS: Final = "outputs"
 OPT_INPUT_TYPES: Final = "input_types"
@@ -44,6 +49,13 @@ USER_CODE_HASH: Final = "code_hash"
 USER_SALT: Final = "salt"
 USER_CAN_ARM: Final = "can_arm"
 USER_CAN_DISARM: Final = "can_disarm"
+# Optional limits on when a user's PIN works (a cleaner, a tradesperson).
+USER_ENABLED: Final = "enabled"
+USER_DAYS: Final = "days"  # ["mon", ...]; empty or missing = every day
+USER_FROM: Final = "from_time"  # "08:00:00"
+USER_UNTIL: Final = "until_time"  # "17:00:00"; before from_time = overnight
+USER_EXPIRES: Final = "expires"  # "2026-12-31": the PIN stops working after this day
+WEEKDAYS: Final = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 DEFAULT_SCAN_INTERVAL: Final = 1
 MIN_SCAN_INTERVAL: Final = 1

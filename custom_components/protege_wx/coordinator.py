@@ -30,8 +30,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BUSY_SECONDS,
     DEFAULT_ENTRY_DELAY,
     DEFAULT_EXIT_DELAY,
+    DEFAULT_IDLE_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     EVENT_EMERGENCY,
@@ -42,6 +44,7 @@ from .const import (
     FULL_REFRESH_SECONDS,
     HEALTH_REFRESH_SECONDS,
     OPT_DELAYS,
+    OPT_IDLE_SCAN_INTERVAL,
     OPT_NOTIFY_FAILED_ARM,
     OPT_OUTPUTS,
     OPT_SCAN_INTERVAL,
@@ -378,6 +381,12 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         )
         self.client = client
         self.site = site
+        # Adaptive polling: the fast interval while anything is happening, the idle one otherwise.
+        self.fast_interval = timedelta(seconds=interval)
+        self.idle_interval = timedelta(
+            seconds=max(interval, int(entry.options.get(OPT_IDLE_SCAN_INTERVAL, DEFAULT_IDLE_SCAN_INTERVAL)))
+        )
+        self._busy_until = time.monotonic() + BUSY_SECONDS
         self.parser = EventParser(
             (a.name for a in site.areas.values()),
             (d.name for d in site.doors.values()),
@@ -404,6 +413,9 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         # Per area: the mode Home Assistant last asked to arm in, and when.
         self.arm_attempts: dict[int, tuple[str, float]] = {}
         self.events_supported = True
+        # Home Assistant arm modes turned off per area ("away", "home", "night"),
+        # set by the area's "Allow arm ..." switches.
+        self.blocked_modes: dict[int, set[str]] = {}
         self.pin_guard = PinGuard()
         self.codes = UserCodes(dict(entry.options))
         # (monotonic time received, area name, zones) for recent arm failures.
@@ -495,7 +507,35 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
     async def async_refresh_all(self) -> None:
         """Re-read everything now (after a command), not just areas and inputs."""
         self._last_full = None
+        self.mark_busy()
         await self.async_refresh()
+
+    def mark_busy(self) -> None:
+        """Poll fast for a while (after a command, an event or a change)."""
+        self._busy_until = time.monotonic() + BUSY_SECONDS
+        if self.update_interval != self.fast_interval:
+            self.update_interval = self.fast_interval
+
+    @staticmethod
+    def _activity(previous: ProtegeState | None, state: ProtegeState) -> bool:
+        """Something is going on: a delay running, an alarm, or zones/doors changing."""
+        for area in state.areas.values():
+            if area.state in ("exit_delay", "entry_delay", "disarm_delay", "code_delay"):
+                return True
+            if area.in_alarm:
+                return True
+        if previous is None:
+            return True
+        if any(
+            (old := previous.inputs.get(rec)) is None or old.is_open != new.is_open
+            for rec, new in state.inputs.items()
+        ):
+            return True
+        return any(
+            (old := previous.doors.get(rec)) is None
+            or (old.lock_code, old.position_code) != (new.lock_code, new.position_code)
+            for rec, new in state.doors.items()
+        )
 
     @staticmethod
     def _keys(page: list[ProtegeEvent]) -> list[tuple]:
@@ -612,6 +652,10 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         except ConfigEntryAuthFailed:
             self._notify_status()
             raise
+        if state.event_seq != (self.data.event_seq if self.data else 0) or self._activity(self.data, state):
+            self.mark_busy()
+        elif time.monotonic() >= self._busy_until:
+            self.update_interval = self.idle_interval
         self._track_changes(self.data, state)
         self._record_success(started, state)
         return state

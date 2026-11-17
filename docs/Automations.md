@@ -80,3 +80,17 @@ One automation that sends phone notifications, with buttons that act on them (ne
 - a door **left unlocked** for 10 minutes, with **Lock**;
 - a door forced or left open;
 - controller faults.
+
+The notifications blueprint can also attach a **camera snapshot** to alarm, entry delay, emergency and door forced notifications (choose the camera under *Camera snapshot*).
+
+## Auto arm blueprint
+
+[![Import the blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Folliemaller%2Fha-protege-wx%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fprotege_wx%2Fprotege_wx_auto_arm.yaml)
+
+Arms away a few minutes after everyone has left, and optionally at bedtime when everyone's home (Night or Home). It uses Arm when ready, so an open door delays arming instead of stopping it. It never disarms. Needs arming without a PIN.
+
+## Door unlock schedule blueprint
+
+[![Import the blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Folliemaller%2Fha-protege-wx%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fprotege_wx%2Fprotege_wx_door_schedule.yaml)
+
+Keeps a door unlocked (its **Hold open** switch) while a Home Assistant schedule helper is on, optionally only while an area is disarmed, and locks it when the schedule ends.

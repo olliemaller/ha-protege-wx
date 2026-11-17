@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+**New**
+
+- **PIN limits.** Each user's PIN can be turned off without deleting it, limited to certain days, to a time range (overnight works) or to a last day: for a cleaner, tradesperson or guest. Set them under **Users and PINs**. A PIN used outside its limits is refused and says why. New action `protege_wx.set_user_enabled` turns a PIN on or off from an automation.
+- **Allow arm switches** per area (away, home, night). Turn a mode off and Home Assistant, the alarm card and voice assistants stop offering it for that area.
+- **All areas** alarm panel when there's more than one area: arm or disarm everything at once, through each area's own checks.
+- **Alarm history** calendar: armed periods with who armed them, alarms and failures to arm, kept across restarts.
+- **Quieter polling.** After a minute with nothing happening, the controller is read every 2 s instead of every 1 s (*Update interval when quiet*). It switches back the moment a zone, door, delay or event changes, or after a command. That halves the load on the controller most of the day.
+- Zone sensors have a `trips_today` attribute: how many times the zone opened today.
+- **Notifications blueprint:** optional camera snapshot on alarm, entry delay, emergency and door forced notifications.
+- **New blueprints:** *Auto arm* (arm away when everyone's left, and at bedtime when everyone's home, using Arm when ready) and *Door unlock schedule* (hold a door open while a schedule is on, optionally only while disarmed).
+
 ## 0.5.0
 
 **Fixed**

@@ -27,6 +27,7 @@ from .const import (
     CONF_PROTOCOL,
     CONF_SERIAL,
     DEFAULT_ARM_WHEN_READY_MINUTES,
+    DEFAULT_IDLE_SCAN_INTERVAL,
     DEFAULT_INPUT_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_VISITOR_MINUTES,
@@ -42,6 +43,7 @@ from .const import (
     OPT_ARM_WHEN_READY_MINUTES,
     OPT_CODE_ARM_REQUIRED,
     OPT_DELAYS,
+    OPT_IDLE_SCAN_INTERVAL,
     OPT_INPUT_TYPES,
     OPT_NIGHT_MODE,
     OPT_NOTIFY_FAILED_ARM,
@@ -53,9 +55,15 @@ from .const import (
     OPT_VISITOR_MINUTES,
     USER_CAN_ARM,
     USER_CAN_DISARM,
+    USER_DAYS,
+    USER_ENABLED,
+    USER_EXPIRES,
+    USER_FROM,
     USER_NAME,
+    USER_UNTIL,
+    WEEKDAYS,
 )
-from .users import UserCodes, make_user
+from .users import UserCodes, describe_schedule, make_user
 from .wxapi import (
     PROTOCOL_AUTO,
     TBL_AREAS,
@@ -415,6 +423,10 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
             return self._save(
                 **{
                     OPT_SCAN_INTERVAL: int(user_input[OPT_SCAN_INTERVAL]),
+                    OPT_IDLE_SCAN_INTERVAL: max(
+                        int(user_input[OPT_SCAN_INTERVAL]),
+                        int(user_input.get(OPT_IDLE_SCAN_INTERVAL, DEFAULT_IDLE_SCAN_INTERVAL)),
+                    ),
                     OPT_SHOW_ARMING: bool(user_input.get(OPT_SHOW_ARMING, False)),
                     OPT_NOTIFY_FAILED_ARM: bool(user_input.get(OPT_NOTIFY_FAILED_ARM, True)),
                     OPT_CODE_ARM_REQUIRED: bool(user_input.get(OPT_CODE_ARM_REQUIRED, True)),
@@ -432,6 +444,18 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 vol.Required(
                     OPT_SCAN_INTERVAL,
                     default=options.get(OPT_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=MIN_SCAN_INTERVAL,
+                        max=MAX_SCAN_INTERVAL,
+                        step=1,
+                        unit_of_measurement="s",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(
+                    OPT_IDLE_SCAN_INTERVAL,
+                    default=options.get(OPT_IDLE_SCAN_INTERVAL, DEFAULT_IDLE_SCAN_INTERVAL),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=MIN_SCAN_INTERVAL,
@@ -638,6 +662,36 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
 
     # ── users ──────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _schedule_schema(current: dict[str, Any]) -> dict:
+        """When the PIN works: on/off, days, hours and an end date (all optional)."""
+        fields: dict = {
+            vol.Required(USER_ENABLED, default=current.get(USER_ENABLED, True)): selector.BooleanSelector(),
+            vol.Optional(USER_DAYS, default=current.get(USER_DAYS) or list(WEEKDAYS)): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(WEEKDAYS), multiple=True, translation_key="weekday",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
+        }
+        for key in (USER_FROM, USER_UNTIL):
+            fields[vol.Optional(key, description={"suggested_value": current.get(key)})] = selector.TimeSelector()
+        fields[vol.Optional(USER_EXPIRES, description={"suggested_value": current.get(USER_EXPIRES)})] = (
+            selector.DateSelector()
+        )
+        return fields
+
+    @staticmethod
+    def _schedule_values(user_input: dict[str, Any]) -> dict[str, Any]:
+        days = [d for d in user_input.get(USER_DAYS) or [] if d in WEEKDAYS]
+        return {
+            USER_ENABLED: bool(user_input.get(USER_ENABLED, True)),
+            USER_DAYS: [] if len(days) == len(WEEKDAYS) else days,
+            USER_FROM: user_input.get(USER_FROM) or None,
+            USER_UNTIL: user_input.get(USER_UNTIL) or None,
+            USER_EXPIRES: user_input.get(USER_EXPIRES) or None,
+        }
+
     async def async_step_users(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         menu = ["add_user"]
         if self._users():
@@ -646,7 +700,10 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
             step_id="users",
             menu_options=menu,
             description_placeholders={
-                "users": ", ".join(u[USER_NAME] for u in self._users()) or "-",
+                "users": ", ".join(
+                    u[USER_NAME] + (f" ({sched})" if (sched := describe_schedule(u)) else "")
+                    for u in self._users()
+                ) or "-",
             },
         )
 
@@ -681,6 +738,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 user = await self.hass.async_add_executor_job(
                     make_user, name, code, user_input[USER_CAN_ARM], user_input[USER_CAN_DISARM]
                 )
+                user |= self._schedule_values(user_input)
                 return self._save(**{OPT_USERS: [*self._users(), user]})
         schema = vol.Schema(
             {
@@ -689,6 +747,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 vol.Required("confirm_code"): PASSWORD_SELECTOR,
                 vol.Required(USER_CAN_ARM, default=True): selector.BooleanSelector(),
                 vol.Required(USER_CAN_DISARM, default=True): selector.BooleanSelector(),
+                **self._schedule_schema({}),
             }
         )
         return self.async_show_form(
@@ -727,6 +786,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 **current,
                 USER_CAN_ARM: user_input[USER_CAN_ARM],
                 USER_CAN_DISARM: user_input[USER_CAN_DISARM],
+                **self._schedule_values(user_input),
             }
             if code:
                 errors = self._code_errors(code, (user_input.get("confirm_code") or "").strip())
@@ -749,6 +809,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 vol.Required(
                     USER_CAN_DISARM, default=current.get(USER_CAN_DISARM, True)
                 ): selector.BooleanSelector(),
+                **self._schedule_schema(current),
             }
         )
         return self.async_show_form(

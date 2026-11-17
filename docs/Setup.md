@@ -32,6 +32,7 @@ Areas, doors, inputs, trouble inputs and outputs are discovered with their names
 
 - **Settings:**
   - update interval (1 to 30 s, default 1 s)
+  - update interval when quiet (default 2 s): used once nothing has changed for a minute; it goes back to the normal interval as soon as a zone, door, delay or event changes
   - "Arming" display
   - notifications for failed arms (on by default)
   - whether a PIN is needed to arm (on by default; only applies once you add users)
@@ -41,6 +42,7 @@ Areas, doors, inputs, trouble inputs and outputs are discovered with their names
 - **Alarm areas:** per area, what Night arms as (instant, stay or off), and the exit and entry delays (0 to 600 s). Only areas with inputs are listed, and only the Night modes the controller allows. Delays the controller reports are filled in for you; otherwise the defaults are 60 s exit and 30 s entry.
 - **Input types:** motion, door, window, smoke and so on, per input.
 - **Users and PINs:** add, edit or remove users and choose whether each can arm and disarm. PINs are at least 4 digits and must be different for each user. Only a salted hash of each PIN is stored. After 5 wrong PINs in 5 minutes, every PIN is blocked for 5 minutes. These users are separate from the controller's own keypad users.
+  Each PIN can also be limited: turned off without deleting it, only on certain days, only between two times (an overnight range like 22:00 to 06:00 works), or until a last day. A PIN used outside its limits is refused with the reason.
 - **Alarmo sync:** see [Apple Home and Alarmo](Apple-Home-and-Alarmo.md#alarmo).
 
 ## Changing the address or login

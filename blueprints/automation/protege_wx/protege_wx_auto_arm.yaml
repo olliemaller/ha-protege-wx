@@ -1,0 +1,140 @@
+blueprint:
+  name: Protege WX auto arm
+  author: Oliver Maller
+  description: >-
+    Arms an ICT Protege WX area (protege_wx integration) for you.
+
+
+    - **Everyone's left:** arms away a few minutes after the last person
+    leaves home.
+
+    - **Bedtime:** arms at a set time when everyone's home (Night or Home mode).
+
+
+    Both use **Arm when ready**: if a door or window is still open, the area
+    arms as soon as it closes, and gives up (with a notification) if it stays
+    open. It never disarms by itself: disarming always needs a person.
+    Needs arming without a PIN (the integration's "Require a PIN to arm" option
+    off), because nobody is there to type one.
+  domain: automation
+  source_url: https://github.com/olliemaller/ha-protege-wx/blob/main/blueprints/automation/protege_wx/protege_wx_auto_arm.yaml
+  homeassistant:
+    min_version: "2025.1.0"
+  input:
+    alarm_panel:
+      name: Alarm area
+      selector:
+        entity:
+          filter:
+            integration: protege_wx
+            domain: alarm_control_panel
+    people:
+      name: Everyone who lives here
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: person
+    away_section:
+      name: When everyone leaves
+      icon: mdi:home-export-outline
+      input:
+        arm_when_away:
+          name: Arm away when everyone has left
+          default: true
+          selector:
+            boolean:
+        away_minutes:
+          name: After everyone has been away for
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 60
+              unit_of_measurement: min
+    night_section:
+      name: Bedtime
+      icon: mdi:weather-night
+      input:
+        arm_at_night:
+          name: Arm at bedtime when everyone's home
+          default: false
+          selector:
+            boolean:
+        night_time:
+          name: Bedtime
+          default: "23:00:00"
+          selector:
+            time:
+        night_mode:
+          name: Mode
+          default: night
+          selector:
+            select:
+              options:
+                - label: Night
+                  value: night
+                - label: Home
+                  value: home
+    notify_service:
+      name: Tell this phone when it arms or can't
+      description: Optional, for example notify.mobile_app_olivers_iphone.
+      default: ""
+      selector:
+        text:
+
+mode: single
+
+triggers:
+  - trigger: state
+    entity_id: !input people
+    to: not_home
+    for:
+      minutes: !input away_minutes
+    id: away
+  - trigger: time
+    at: !input night_time
+    id: night
+
+variables:
+  panel: !input alarm_panel
+  people_list: !input people
+  notify_service: !input notify_service
+  everyone_away: >-
+    {{ people_list | select('is_state', 'home') | list | count == 0 }}
+  everyone_home: >-
+    {{ people_list | reject('is_state', 'home') | list | count == 0 }}
+  want_away: !input arm_when_away
+  want_night: !input arm_at_night
+  night_mode: !input night_mode
+
+conditions:
+  - condition: state
+    entity_id: !input alarm_panel
+    state: disarmed
+  - condition: template
+    value_template: >-
+      {{ (trigger.id == 'away' and want_away and everyone_away)
+         or (trigger.id == 'night' and want_night and everyone_home) }}
+
+actions:
+  - variables:
+      mode: "{{ 'away' if trigger.id == 'away' else night_mode }}"
+  - action: protege_wx.arm_when_ready
+    target:
+      entity_id: "{{ panel }}"
+    data:
+      mode: "{{ mode }}"
+    continue_on_error: true
+  - if:
+      - condition: template
+        value_template: "{{ notify_service != '' }}"
+    then:
+      - action: "{{ notify_service }}"
+        continue_on_error: true
+        data:
+          title: Alarm
+          message: >-
+            {{ state_attr(panel, 'friendly_name') }}: arming {{ mode }}
+            ({{ 'everyone has left' if trigger.id == 'away' else 'bedtime' }}).
+            If a zone is open it arms when it closes.

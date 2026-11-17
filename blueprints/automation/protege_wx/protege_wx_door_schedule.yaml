@@ -1,0 +1,60 @@
+blueprint:
+  name: Protege WX door unlock schedule
+  author: Oliver Maller
+  description: >-
+    Keeps an ICT Protege WX door unlocked while a Home Assistant **schedule**
+    is on (for example weekdays 8:00 to 17:00), using the door's **Hold open**
+    switch, and locks it again when the schedule ends.
+
+
+    Make the schedule first under Settings > Devices & services > Helpers >
+    Create helper > Schedule. Optionally the door only unlocks while the alarm
+    is disarmed, so an armed site stays locked.
+  domain: automation
+  source_url: https://github.com/olliemaller/ha-protege-wx/blob/main/blueprints/automation/protege_wx/protege_wx_door_schedule.yaml
+  homeassistant:
+    min_version: "2025.1.0"
+  input:
+    schedule:
+      name: Schedule
+      selector:
+        entity:
+          filter:
+            domain: schedule
+    hold_open:
+      name: Door "Hold open" switch
+      selector:
+        entity:
+          filter:
+            integration: protege_wx
+            domain: switch
+    alarm_panel:
+      name: Only while this area is disarmed (optional)
+      default: []
+      selector:
+        entity:
+          filter:
+            integration: protege_wx
+            domain: alarm_control_panel
+
+mode: restart
+
+triggers:
+  - trigger: state
+    entity_id: !input schedule
+  - trigger: homeassistant
+    event: start
+  - trigger: state
+    entity_id: !input alarm_panel
+
+variables:
+  schedule_entity: !input schedule
+  panel_input: !input alarm_panel
+  panel: "{{ panel_input if panel_input is string else (panel_input | first if panel_input else '') }}"
+  should_be_open: >-
+    {{ is_state(schedule_entity, 'on') and (panel == '' or is_state(panel, 'disarmed')) }}
+
+actions:
+  - action: "{{ 'switch.turn_on' if should_be_open else 'switch.turn_off' }}"
+    target:
+      entity_id: !input hold_open

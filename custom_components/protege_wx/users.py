@@ -9,7 +9,10 @@ import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from typing import Any
+
+from homeassistant.util import dt as dt_util
 
 from .const import (
     OPT_CODE_ARM_REQUIRED,
@@ -18,8 +21,14 @@ from .const import (
     USER_CAN_ARM,
     USER_CAN_DISARM,
     USER_CODE_HASH,
+    USER_DAYS,
+    USER_ENABLED,
+    USER_EXPIRES,
+    USER_FROM,
     USER_NAME,
     USER_SALT,
+    USER_UNTIL,
+    WEEKDAYS,
 )
 
 _ITERATIONS = 100_000
@@ -43,13 +52,81 @@ def make_user(name: str, code: str, can_arm: bool = True, can_disarm: bool = Tru
     }
 
 
+def _parse_time(value: Any) -> time | None:
+    if not value:
+        return None
+    try:
+        return time.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def _parse_date(value: Any) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def access_problem(user: dict[str, Any], now: datetime | None = None) -> str | None:
+    """Why this user's PIN doesn't work right now, or None if it does.
+
+    Returns "user_disabled", "user_expired" or "outside_schedule".
+    """
+    if not user.get(USER_ENABLED, True):
+        return "user_disabled"
+    now = now or dt_util.now()
+    expires = _parse_date(user.get(USER_EXPIRES))
+    if expires and now.date() > expires:
+        return "user_expired"
+    start, end = _parse_time(user.get(USER_FROM)), _parse_time(user.get(USER_UNTIL))
+    days = [d for d in user.get(USER_DAYS) or [] if d in WEEKDAYS]
+    if not days and not start and not end:
+        return None
+    clock = now.time().replace(tzinfo=None)
+    day = WEEKDAYS[now.weekday()]
+    if start and end and end <= start:  # overnight, e.g. 22:00-06:00
+        if clock >= start:
+            in_hours, schedule_day = True, day
+        elif clock < end:
+            in_hours, schedule_day = True, WEEKDAYS[(now.weekday() - 1) % 7]  # started yesterday
+        else:
+            in_hours, schedule_day = False, day
+    else:
+        in_hours = (not start or clock >= start) and (not end or clock < end)
+        schedule_day = day
+    if not in_hours or (days and schedule_day not in days):
+        return "outside_schedule"
+    return None
+
+
+def describe_schedule(user: dict[str, Any]) -> str | None:
+    """A short description such as "mon, tue 08:00-17:00 until 2026-12-31"."""
+    parts = []
+    days = [d for d in user.get(USER_DAYS) or [] if d in WEEKDAYS]
+    if days and len(days) < 7:
+        parts.append(", ".join(days))
+    start, end = _parse_time(user.get(USER_FROM)), _parse_time(user.get(USER_UNTIL))
+    if start or end:
+        parts.append(f"{start.strftime('%H:%M') if start else '00:00'}-{end.strftime('%H:%M') if end else '24:00'}")
+    if user.get(USER_EXPIRES):
+        parts.append(f"until {user[USER_EXPIRES]}")
+    if not user.get(USER_ENABLED, True):
+        parts.append("disabled")
+    return " ".join(parts) or None
+
+
 @dataclass(frozen=True)
 class CodeCheck:
     """Outcome of checking a code for an action."""
 
     allowed: bool
     user: str | None = None
-    reason: str | None = None  # "no_code", "invalid_code", "not_permitted"
+    # "no_code", "invalid_code", "not_permitted", "user_disabled", "user_expired",
+    # "outside_schedule"
+    reason: str | None = None
 
 
 class UserCodes:
@@ -77,7 +154,7 @@ class UserCodes:
                 return user
         return None
 
-    def check(self, code: str | None, action: str) -> CodeCheck:
+    def check(self, code: str | None, action: str, now: datetime | None = None) -> CodeCheck:
         """Check ``code`` for ``action`` ("arm" or "disarm")."""
         if not self.enabled:
             return CodeCheck(True)
@@ -91,4 +168,6 @@ class UserCodes:
         permitted = user.get(USER_CAN_ARM if action == "arm" else USER_CAN_DISARM, True)
         if not permitted:
             return CodeCheck(False, user[USER_NAME], reason="not_permitted")
+        if problem := access_problem(user, now):
+            return CodeCheck(False, user[USER_NAME], reason=problem)
         return CodeCheck(True, user[USER_NAME])

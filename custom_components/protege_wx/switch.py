@@ -11,6 +11,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
@@ -23,6 +24,7 @@ from .wxapi.events import KIND_AREA, ParsedEvent
 PARALLEL_UPDATES = 1
 
 SERVICE_PULSE_OUTPUT = "pulse_output"
+ALLOW_MODES = ("away", "home", "night")
 
 
 async def async_setup_entry(
@@ -44,6 +46,13 @@ async def async_setup_entry(
         ProtegeArmWhenReadySwitch(data.coordinator, area)
         for area in data.site.areas.values()
         if area.has_inputs is not False
+    ]
+    entities += [
+        ProtegeAllowArmSwitch(data.coordinator, area, mode)
+        for area in data.site.areas.values()
+        if area.has_inputs is not False
+        for mode in ALLOW_MODES
+        if mode != "home" or area.stay_enabled
     ]
     entities += [
         ProtegeOutputSwitch(data.coordinator, rec_id, name)
@@ -274,6 +283,60 @@ class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         self._waits.async_cancel(self._panel())
+
+    async def async_service_pulse(self, seconds: int) -> None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="not_an_output",
+            translation_placeholders={"entity": self.entity_id},
+        )
+
+
+class ProtegeAllowArmSwitch(ProtegeEntity, SwitchEntity, RestoreEntity):
+    """Offer (on) or hide (off) one arm mode for an area in Home Assistant.
+
+    For an area that's never armed at home or at night: its alarm panel, the
+    alarm card and voice assistants stop offering that mode. The controller's
+    own keypads are unaffected.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: ProtegeCoordinator, area: AreaInfo, mode: str) -> None:
+        super().__init__(coordinator, "area", area.id, key=f"allow_{mode}", own_device=True)
+        self._mode = mode
+        self._attr_translation_key = f"allow_arm_{mode}"
+
+    @property
+    def available(self) -> bool:
+        return True  # a setting: change it even while the controller is unreachable
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        self._set(last is None or last.state != "off")
+
+    def _set(self, allowed: bool) -> None:
+        blocked = self.coordinator.blocked_modes.setdefault(self.rec_id, set())
+        if allowed:
+            blocked.discard(self._mode)
+        else:
+            blocked.add(self._mode)
+
+    @property
+    def is_on(self) -> bool:
+        return self._mode not in self.coordinator.blocked_modes.get(self.rec_id, set())
+
+    async def _apply(self, allowed: bool) -> None:
+        self._set(allowed)
+        self.async_write_ha_state()
+        self.coordinator.async_update_listeners()  # the alarm panel shows the new modes
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._apply(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._apply(False)
 
     async def async_service_pulse(self, seconds: int) -> None:
         raise ServiceValidationError(

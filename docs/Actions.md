@@ -8,6 +8,7 @@
 | `protege_wx.visitor_unlock` | lock | Hold unlocked for `minutes` (default from the options), then lock |
 | `protege_wx.bypass` | zone sensor | `none`, `temporary` (until disarmed) or `permanent`. With PINs set up, bypassing a zone in an armed area needs a `code` from a user who can disarm |
 | `protege_wx.pulse_output` | output switch | On for `seconds`, timed by the controller |
+| `protege_wx.set_user_enabled` | alarm panel | Turn a user's PIN on or off (`user`, `enabled`) without opening the options, for example a cleaner's PIN only on cleaning days |
 
 The standard `alarm_control_panel.*` and `lock.*` actions work too.
 

@@ -2317,3 +2317,231 @@ async def test_rescan_button_reloads(hass: HomeAssistant, controller) -> None:
     with patch.object(hass.config_entries, "async_schedule_reload") as reload:
         await hass.services.async_call("button", "press", {"entity_id": ent}, blocking=True)
     reload.assert_called_once_with(entry.entry_id)
+
+
+def test_pin_schedules() -> None:
+    from datetime import datetime
+
+    from custom_components.protege_wx.users import access_problem, describe_schedule
+
+    tue_10 = datetime(2026, 11, 17, 10, 0)  # a Tuesday
+    tue_20 = datetime(2026, 11, 17, 20, 0)
+    cleaner = {"days": ["tue"], "from_time": "08:00:00", "until_time": "17:00:00"}
+    assert access_problem(cleaner, tue_10) is None
+    assert access_problem(cleaner, tue_20) == "outside_schedule"
+    assert access_problem(cleaner, datetime(2026, 11, 18, 10, 0)) == "outside_schedule"  # Wednesday
+    night = {"days": ["fri"], "from_time": "22:00:00", "until_time": "06:00:00"}
+    assert access_problem(night, datetime(2026, 11, 20, 23, 0)) is None  # Friday night
+    assert access_problem(night, datetime(2026, 11, 21, 5, 0)) is None  # still Friday's shift
+    assert access_problem(night, datetime(2026, 11, 21, 23, 0)) == "outside_schedule"  # Saturday
+    assert access_problem({"expires": "2026-11-16"}, tue_10) == "user_expired"
+    assert access_problem({"expires": "2026-11-17"}, tue_20) is None
+    assert access_problem({"enabled": False}, tue_10) == "user_disabled"
+    assert access_problem({}, tue_10) is None
+    assert describe_schedule(cleaner) == "tue 08:00-17:00"
+
+
+async def test_turning_a_pin_off_and_on(hass: HomeAssistant, controller) -> None:
+    users = [make_user("Alex", "1234"), make_user("Cleaner", "5555")]
+    entry = _entry(controller, users=users)
+    await _setup(hass, entry)
+    await hass.services.async_call(
+        DOMAIN, "set_user_enabled", {"entity_id": ALARM, "user": "cleaner", "enabled": False}, blocking=True
+    )
+    await hass.async_block_till_done()
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            "alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM, "code": "5555"}, blocking=True
+        )
+    assert err.value.translation_key == "user_disabled"
+    await hass.services.async_call(
+        "alarm_control_panel", "alarm_arm_away", {"entity_id": ALARM, "code": "1234"}, blocking=True
+    )
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN, "set_user_enabled", {"entity_id": ALARM, "user": "Nobody", "enabled": True}, blocking=True
+        )
+    assert err.value.translation_key == "user_not_found"
+
+
+async def test_allow_arm_switches_hide_modes(hass: HomeAssistant, controller) -> None:
+    from homeassistant.components.alarm_control_panel import (
+        AlarmControlPanelEntityFeature as F,
+    )
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    switch = er.async_get(hass).async_get_entity_id("switch", DOMAIN, "A1B2C3D4_area_16_allow_night")
+    assert switch and _state(hass, switch) == "on"
+    assert hass.states.get(ALARM).attributes["supported_features"] & F.ARM_NIGHT
+    await hass.services.async_call("switch", "turn_off", {"entity_id": switch}, blocking=True)
+    await hass.async_block_till_done()
+    assert not hass.states.get(ALARM).attributes["supported_features"] & F.ARM_NIGHT
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call("alarm_control_panel", "alarm_arm_night", {"entity_id": ALARM}, blocking=True)
+    # Home Assistant refuses it before it reaches us, as the mode is no longer offered.
+    assert err.value.translation_key in ("mode_not_allowed", "service_not_supported")
+    assert not controller.state.commands
+    panel = entry.runtime_data.areas[16]
+    with pytest.raises(ServiceValidationError) as err:
+        await panel.async_service_arm("instant")
+    assert err.value.translation_key == "mode_not_allowed"
+    # Home and away still work.
+    await hass.services.async_call("alarm_control_panel", "alarm_arm_home", {"entity_id": ALARM}, blocking=True)
+    assert _state(hass, ALARM) == "armed_home"
+
+
+async def test_adaptive_polling(hass: HomeAssistant, controller) -> None:
+    import time
+    from datetime import timedelta
+
+    entry = _entry(controller, scan_interval=1, idle_scan_interval=5)
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.update_interval == timedelta(seconds=1)  # busy straight after start
+    await _refresh(hass, entry)  # settle the first full read
+    coordinator._busy_until = time.monotonic() - 1
+    await _refresh(hass, entry)
+    assert coordinator.update_interval == timedelta(seconds=5)  # quiet
+    controller.open_input(3)
+    await _refresh(hass, entry)
+    assert coordinator.update_interval == timedelta(seconds=1)  # a zone changed
+
+
+async def test_input_remembers_last_trip(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    living = "binary_sensor.living"
+    assert hass.states.get(living).attributes["trips_today"] == 0
+    controller.open_input(3)
+    await _refresh(hass, entry)
+    assert hass.states.get(living).attributes["trips_today"] == 1
+    controller.state.inputs[3][0] = 0
+    await _refresh(hass, entry)
+    controller.open_input(3)
+    await _refresh(hass, entry)
+    assert hass.states.get(living).attributes["trips_today"] == 2
+
+
+async def test_alarm_history_calendar(hass: HomeAssistant, controller) -> None:
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    controller.clock = dt_util.now().replace(tzinfo=None, microsecond=0) - timedelta(minutes=10)
+    controller.log("Area Alarm Armed By User Jane Citizen")
+    await _refresh(hass, entry)
+    cal = er.async_get(hass).async_get_entity_id("calendar", DOMAIN, "A1B2C3D4_controller_0_alarm_history")
+    assert cal and _state(hass, cal) == "on"  # armed now
+    controller.log("Area Alarm Disarmed By User Jane Citizen")
+    await _refresh(hass, entry)
+    assert _state(hass, cal) == "off"
+    entity = hass.data["entity_components"]["calendar"].get_entity(cal)
+    events = await entity.async_get_events(hass, dt_util.now() - timedelta(hours=1), dt_util.now())
+    assert len(events) == 1 and events[0].summary.startswith("Alarm armed") and "Jane Citizen" in events[0].summary
+
+
+def test_all_areas_state() -> None:
+    from types import SimpleNamespace
+
+    from homeassistant.components.alarm_control_panel import AlarmControlPanelState as S
+
+    from custom_components.protege_wx.alarm_control_panel import ProtegeAllAreas
+
+    def combined(*states):
+        panel = ProtegeAllAreas.__new__(ProtegeAllAreas)
+        panel._areas = lambda: [SimpleNamespace(alarm_state=s) for s in states]
+        return ProtegeAllAreas.alarm_state.fget(panel)
+
+    assert combined(S.DISARMED, S.DISARMED) == S.DISARMED
+    assert combined(S.ARMED_AWAY, S.ARMED_AWAY) == S.ARMED_AWAY
+    assert combined(S.ARMED_AWAY, S.DISARMED) == S.ARMED_CUSTOM_BYPASS
+    assert combined(S.ARMED_AWAY, S.TRIGGERED) == S.TRIGGERED
+    assert combined(S.PENDING, S.ARMING) == S.PENDING
+    assert combined(S.ARMED_AWAY, None) is None
+
+
+async def test_blueprint_attaches_camera_snapshot(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sent = await _blueprint(hass, camera="camera.front")
+    controller.state.areas[16] = [128, 130, 8, 0]  # entry delay
+    await _bp_refresh(hass, entry)
+    assert sent[-1]["data"]["image"] == "/api/camera_proxy/camera.front"
+    assert sent[-1]["data"]["tag"].startswith("protege_entry_")
+    await _stop_automation(hass)
+
+
+async def test_blueprint_without_camera_has_no_image(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    sent = await _blueprint(hass)
+    controller.state.areas[16] = [128, 130, 8, 0]
+    await _bp_refresh(hass, entry)
+    assert "image" not in sent[-1]["data"]
+    await _stop_automation(hass)
+
+
+@pytest.mark.parametrize(
+    ("name", "inputs"),
+    [
+        ("protege_wx_auto_arm.yaml", {"alarm_panel": ALARM, "people": ["person.alex"]}),
+        (
+            "protege_wx_door_schedule.yaml",
+            {"schedule": "schedule.office_hours", "hold_open": "switch.front_door_hold_open"},
+        ),
+    ],
+)
+async def test_extra_blueprints_load(hass: HomeAssistant, controller, name: str, inputs: dict) -> None:
+    import shutil
+    from pathlib import Path
+
+    from homeassistant.setup import async_setup_component
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    source = Path(__file__).parent.parent / "blueprints/automation/protege_wx" / name
+    target = Path(hass.config.path("blueprints/automation/protege_wx"))
+    await hass.async_add_executor_job(lambda: target.mkdir(parents=True, exist_ok=True))
+    await hass.async_add_executor_job(shutil.copy, source, target / name)
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {"automation": {"id": "x", "use_blueprint": {"path": f"protege_wx/{name}", "input": inputs}}},
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get("automation.automation_0").state == "on"
+
+
+async def test_door_schedule_blueprint_follows_the_schedule(hass: HomeAssistant, controller) -> None:
+    import shutil
+    from pathlib import Path
+
+    from homeassistant.setup import async_setup_component
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    name = "protege_wx_door_schedule.yaml"
+    source = Path(__file__).parent.parent / "blueprints/automation/protege_wx" / name
+    target = Path(hass.config.path("blueprints/automation/protege_wx"))
+    await hass.async_add_executor_job(lambda: target.mkdir(parents=True, exist_ok=True))
+    await hass.async_add_executor_job(shutil.copy, source, target / name)
+    hass.states.async_set("schedule.office_hours", "off")
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {"automation": {"id": "x", "use_blueprint": {"path": f"protege_wx/{name}", "input": {
+            "schedule": "schedule.office_hours", "hold_open": "switch.front_door_hold_open", "alarm_panel": ALARM,
+        }}}},
+    )
+    await hass.async_block_till_done()
+    hass.states.async_set("schedule.office_hours", "on")
+    await hass.async_block_till_done()
+    await _refresh(hass, entry)
+    assert _state(hass, "switch.front_door_hold_open") == "on"
+    hass.states.async_set("schedule.office_hours", "off")
+    await hass.async_block_till_done()
+    await _refresh(hass, entry)
+    assert _state(hass, "switch.front_door_hold_open") == "off"

@@ -107,3 +107,20 @@ pulse_output:
           max: 65535
           unit_of_measurement: s
           mode: box
+
+set_user_enabled:
+  target:
+    entity:
+      integration: protege_wx
+      domain: alarm_control_panel
+  fields:
+    user:
+      required: true
+      example: Cleaner
+      selector:
+        text:
+    enabled:
+      required: true
+      default: true
+      selector:
+        boolean:

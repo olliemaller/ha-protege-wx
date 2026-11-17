@@ -41,6 +41,14 @@ Some entities start disabled, so they don't clutter your dashboards: everything 
 - **Tamper** sensor (diagnostic).
 - **Bypass** selector: not bypassed, until disarmed, or permanent. With PINs set up, it only works while the zone's area is disarmed; use the [`protege_wx.bypass`](Actions.md) action with a `code` for an armed area.
 
+## Areas: Allow arm switches
+
+Each area has **Allow arm away**, **Allow arm home** and **Allow arm night** switches (configuration). Turn one off to stop Home Assistant, the alarm card and voice assistants offering that mode for the area. Keypads are unaffected.
+
+## Zones
+
+Each zone sensor has a `trips_today` attribute: how many times it opened today, to find a sensor that keeps triggering. The time it last triggered is its **Last triggered** sensor.
+
 ## Controller
 
 - **Trouble inputs** such as mains failure, low battery, siren tamper and module offline.
@@ -48,6 +56,8 @@ Some entities start disabled, so they don't clutter your dashboards: everything 
 - **Supply voltage**, **Last event** and **Memory used** (diagnostic, disabled by default).
 - **Connection** sensor (diagnostic): Connected, Reconnecting, Backing off or Login failed, with the last successful update, protocol, response time and recent logins.
 - **Events** entity for the controller.
+- **All areas** alarm panel (when there's more than one area): arm or disarm every area at once. It shows the most urgent state, an armed mode when all areas agree, or *armed custom bypass* when only some are armed.
+- **Alarm history** calendar: each armed period (who armed it and how), alarms and failures to arm, kept across restarts (last 500).
 - **Rescan controller** button (configuration): reads the controller again, so doors, zones and outputs you added or renamed on the controller appear without removing the integration.
 
 ## Outputs

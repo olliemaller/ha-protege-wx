@@ -62,9 +62,9 @@ actions:
 
 | Event | When |
 |---|---|
-| `protege_wx_event` | Every meaningful event-log line: `kind`, `subject`, `type`, `by`, `mode`, `method`, `text`, `time` and `entry_id` |
+| `protege_wx_event` | Every meaningful event-log line: `kind`, `subject`, `type`, `by`, `mode`, `method`, `text`, `time`, `replayed` and `entry_id`. `replayed` is `true` for an alarm, emergency or failure to arm that happened in the 10 minutes before Home Assistant started, announced on the first read so it isn't lost |
 | `protege_wx_failed_to_arm` | An arm attempt fails. Includes `area` and the `zones` that stopped it |
-| `protege_wx_emergency` | A duress, panic or medical alarm: `type`, `area`, `by`, `text` |
+| `protege_wx_emergency` | A duress, panic or medical alarm: `type`, `area`, `by`, `text`, `replayed` |
 | `protege_wx_arm_when_ready` | An [Arm when ready](Arm-when-ready.md#results) wait finished |
 
 ## Notifications blueprint

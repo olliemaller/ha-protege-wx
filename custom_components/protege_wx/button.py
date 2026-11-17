@@ -1,4 +1,5 @@
-"""Buttons: force arm (away / night) and silence per area, visitor unlock per door."""
+"""Buttons: force arm (away / night) and silence per area, visitor unlock per door,
+and Rescan on the controller."""
 from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity
@@ -30,6 +31,7 @@ async def async_setup_entry(
         entities.append(ProtegeSilenceButton(entry, data.coordinator, area))
     for door in data.site.doors.values():
         entities.append(ProtegeVisitorButton(data.coordinator, door))
+    entities.append(ProtegeRescanButton(data.coordinator))
     # A "Force arm night" button left over from when Night was an instant arm.
     from homeassistant.helpers import entity_registry as er
 
@@ -103,3 +105,24 @@ class ProtegeVisitorButton(ProtegeEntity, ButtonEntity):
         entry = self.coordinator.config_entry
         minutes = int(entry.options.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES))
         await self._command(entry.runtime_data.visitors.async_unlock(self.rec_id, minutes))
+
+
+class ProtegeRescanButton(ProtegeEntity, ButtonEntity):
+    """Read the controller's areas, doors, inputs and outputs again.
+
+    For after a door, zone or output is added or renamed on the controller:
+    the new records appear without removing or reloading the integration.
+    """
+
+    _attr_translation_key = "rescan"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: ProtegeCoordinator) -> None:
+        super().__init__(coordinator, "controller", 0, key="rescan")
+
+    @property
+    def available(self) -> bool:
+        return True  # a rescan is also the way back after a change that broke something
+
+    async def async_press(self) -> None:
+        self.hass.config_entries.async_schedule_reload(self.coordinator.config_entry.entry_id)

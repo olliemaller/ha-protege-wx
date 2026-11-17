@@ -87,6 +87,14 @@ _SEEN_LIMIT = 500
 # Events older than this (by the controller's clock, relative to the newest line
 # read) are history after an outage, not news: kept, but not sent to automations.
 _STALE_SECONDS = 120
+# On the first read after a start or restart, these events from the last few
+# minutes are still announced (marked replayed), so an alarm, duress or failure
+# to arm that happened while Home Assistant was restarting isn't lost.
+_REPLAY_SECONDS = 600
+_REPLAY_AREA_TYPES = ("alarm", "failed_to_arm")
+# After an outage the newest page may all be new; read back this many pages to
+# find where we left off.
+_MAX_PAGES_BACK = 3
 
 ARM_OK = "ok"
 ARM_FAILED = "failed"
@@ -387,6 +395,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self._seen: set[tuple] = set()
         self._seen_order: deque[tuple] = deque()
         self._events_primed = False
+        self._replayed: set[int] = set()  # id() of events announced late on the first read
         self._event_seq = 0
         self.history: deque[ParsedEvent] = deque(maxlen=EVENT_HISTORY)
         self._event_listeners: list[Callable[[ParsedEvent], None]] = []
@@ -519,8 +528,28 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         # A real controller's log is never empty; an empty page usually means
         # the operator isn't allowed to read it (the reply is a bare FAIL).
         self._last_page_empty = not page
-        return [(key, event) for key, event in zip(self._keys(page), page, strict=True)
-                if key not in self._seen]
+        fresh = [(key, event) for key, event in zip(self._keys(page), page, strict=True)
+                 if key not in self._seen]
+        if self._events_primed and self._seen and page and len(fresh) == len(page):
+            # Every line on the newest page is new: more happened since the last
+            # read than one page holds. Read back until a known line turns up.
+            known = {key for key, _ in fresh}
+            for _ in range(_MAX_PAGES_BACK):
+                try:
+                    older = await self.client.events("Previous")
+                except ProtegeAuthError:
+                    raise
+                except ProtegeError:
+                    break
+                if not older:
+                    break
+                new = [(key, event) for key, event in zip(self._keys(older), older, strict=True)
+                       if key not in self._seen and key not in known]
+                known.update(key for key, _ in new)
+                fresh = new + fresh
+                if len(new) < len(older):
+                    break  # reached lines we had already seen
+        return fresh
 
     def _commit_events(self, fresh: list[tuple[tuple, ProtegeEvent]]) -> list[ParsedEvent]:
         """Mark lines as seen; return the meaningful ones that are news."""
@@ -532,10 +561,25 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         parsed = [self.parser.parse(event) for _, event in fresh]
         meaningful = [p for p in parsed if p.kind != KIND_NOISE]
         if not self._events_primed:
-            # The first page is history, not news: keep it for context only.
+            # The first page is history, not news: keep it for context only,
+            # except alarms, emergencies and failures to arm from the last few
+            # minutes, which happened while Home Assistant wasn't watching.
             self._events_primed = True
-            self.history.extend(meaningful)
-            return []
+            local_now = dt_util.now().replace(tzinfo=None)
+            late = []
+            for p in meaningful:
+                recent = p.event.time and 0 <= (local_now - p.event.time).total_seconds() <= _REPLAY_SECONDS
+                urgent = p.kind == KIND_EMERGENCY or (
+                    p.kind == KIND_AREA and p.event_type in _REPLAY_AREA_TYPES
+                )
+                if recent and urgent:
+                    late.append(p)
+                    self._replayed.add(id(p))
+                else:
+                    self.history.append(p)
+            if late:
+                _LOGGER.info("Announcing %d alarm event(s) from while Home Assistant was starting", len(late))
+            return late
         times = [p.event.time for p in meaningful if p.event.time]
         if not times:
             return meaningful
@@ -647,6 +691,8 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                     "method": parsed.method,
                     "text": parsed.event.text,
                     "time": parsed.event.time.isoformat() if parsed.event.time else None,
+                    # True for an alarm that happened while Home Assistant was restarting.
+                    "replayed": id(parsed) in self._replayed,
                 },
             )
             if zones is not None:
@@ -744,6 +790,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 "by": who,
                 "text": parsed.event.text,
                 "time": parsed.event.time.isoformat() if parsed.event.time else None,
+                "replayed": id(parsed) in self._replayed,
             },
         )
         self.health.raise_emergency(parsed.event_type, area or "", who or "", parsed.event.text)

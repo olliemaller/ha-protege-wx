@@ -1,7 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
+**Fixed**
+
+- **Alarms during a Home Assistant restart weren't announced.** The first read of the controller's log after a start was treated as history. An alarm, a duress/panic/medical alarm or a failure to arm logged while Home Assistant was restarting fired no automations or notifications. Those from the last 10 minutes are now announced on the first read, with `replayed: true` on the event so automations can tell. Everything else on that page stays history.
+- **Busy spells could lose events.** Only the newest page of the log was read. If more happened between two reads than one page holds (after a network drop, or a crowd through a door), the earlier lines were never seen. When every line on the newest page is new, earlier pages are now read until the last known line turns up (up to 3 pages).
+
+**New**
+
+- **Rescan controller** button on the controller device (under Configuration). It reads the controller again, so doors, zones and outputs added or renamed on the controller appear without removing the integration.
 - New black-and-white icon, logo and banner, with dark-mode versions of the icon and logo for Home Assistant's integration list.
 - README badges now match the black-and-white look.
 

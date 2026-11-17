@@ -2242,3 +2242,78 @@ async def test_arm_when_ready_armed_elsewhere_is_flagged(hass: HomeAssistant, co
     )
     await _refresh(hass, entry)
     assert results[-1].data["result"] == "armed" and results[-1].data["armed_elsewhere"] is True
+
+
+async def test_alarm_during_restart_is_announced_once(hass: HomeAssistant, controller) -> None:
+    """An alarm logged while Home Assistant was starting still reaches automations."""
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.protege_wx.const import EVENT_EMERGENCY, EVENT_LOG
+
+    now = dt_util.now().replace(tzinfo=None, microsecond=0)
+    controller.clock = now - timedelta(minutes=30)
+    controller.log("Area Alarm Disarmed By Home Assistant")  # old: history only
+    controller.clock = now - timedelta(minutes=2)
+    controller.log("User Jane Citizen Duress Front Door")  # recent and urgent: announced
+    controller.log("Area Alarm Failure To ARM By User Jane Citizen")
+    controller.log("Input Living Opened")  # recent but not urgent: history
+    logged = async_capture_events(hass, EVENT_LOG)
+    alerts = async_capture_events(hass, EVENT_EMERGENCY)
+    entry = _entry(controller)
+    await _setup(hass, entry)
+
+    texts = [e.data["text"] for e in logged]
+    assert texts == ["User Jane Citizen Duress Front Door", "Area Alarm Failure To ARM By User Jane Citizen"]
+    assert all(e.data["replayed"] for e in logged)
+    assert alerts and alerts[0].data["replayed"] is True
+    # Not announced again on the next poll.
+    await _refresh(hass, entry)
+    assert len(logged) == 2
+    # Live events afterwards aren't marked replayed.
+    controller.clock = now
+    controller.log("Area Alarm Stay Armed By User Jane Citizen")
+    await _refresh(hass, entry)
+    assert logged[-1].data["replayed"] is False
+
+
+async def test_more_than_a_page_of_events_reads_back(hass: HomeAssistant, controller) -> None:
+    """After a busy spell the newest page is all new: earlier pages are read too."""
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    seen = []
+    entry.runtime_data.coordinator.async_add_event_listener(seen.append)
+    pages: list[list[str]] = []
+    original = controller._command
+
+    def paged(plain: str, sessid: str) -> str:
+        if plain.startswith("Request&Type=Events") and pages:
+            page = pages.pop(0)
+            return "&".join(f"Event{i}={t}&EventCodes{i}=1,2,3" for i, t in enumerate(page))
+        return original(plain, sessid)
+
+    controller._command = paged
+    burst = []
+    for n in range(6):
+        controller.log(f"User Jane Citizen Entry Granted Front Door Using User By Card {n}")
+        burst.append(controller.state.events[-1])
+    # Latest page holds only the newest 3 (all new); Previous holds the 3 before
+    # plus the last line we had already seen.
+    already = controller.state.events[-7]
+    pages[:] = [burst[3:], [already, *burst[:3]]]
+    await _refresh(hass, entry)
+    numbers = [p.event.text.rsplit(" ", 1)[-1] for p in seen]
+    assert numbers == ["0", "1", "2", "3", "4", "5"]
+
+
+async def test_rescan_button_reloads(hass: HomeAssistant, controller) -> None:
+    from unittest.mock import patch
+
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    ent = er.async_get(hass).async_get_entity_id("button", DOMAIN, "A1B2C3D4_controller_0_rescan")
+    assert ent is not None
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload:
+        await hass.services.async_call("button", "press", {"entity_id": ent}, blocking=True)
+    reload.assert_called_once_with(entry.entry_id)

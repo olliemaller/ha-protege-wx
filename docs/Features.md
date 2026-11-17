@@ -48,6 +48,7 @@ Some entities start disabled, so they don't clutter your dashboards: everything 
 - **Supply voltage**, **Last event** and **Memory used** (diagnostic, disabled by default).
 - **Connection** sensor (diagnostic): Connected, Reconnecting, Backing off or Login failed, with the last successful update, protocol, response time and recent logins.
 - **Events** entity for the controller.
+- **Rescan controller** button (configuration): reads the controller again, so doors, zones and outputs you added or renamed on the controller appear without removing the integration.
 
 ## Outputs
 

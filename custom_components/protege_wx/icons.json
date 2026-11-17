@@ -38,6 +38,9 @@
       },
       "visitor_unlock": {
         "default": "mdi:account-clock"
+      },
+      "rescan": {
+        "default": "mdi:refresh"
       }
     },
     "switch": {

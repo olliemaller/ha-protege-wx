@@ -2513,6 +2513,8 @@ async def test_extra_blueprints_load(hass: HomeAssistant, controller, name: str,
     )
     await hass.async_block_till_done()
     assert hass.states.get("automation.automation_0").state == "on"
+    # Turning it off removes its time trigger, so no timer outlives the test.
+    await hass.services.async_call("automation", "turn_off", {"entity_id": "automation.automation_0"}, blocking=True)
 
 
 async def test_door_schedule_blueprint_follows_the_schedule(hass: HomeAssistant, controller) -> None:

@@ -8,4 +8,9 @@ except ImportError:  # pragma: no cover - older releases
         AddEntitiesCallback as AddConfigEntryEntitiesCallback,
     )
 
-__all__ = ["AddConfigEntryEntitiesCallback"]
+try:  # Home Assistant 2026.10 moved its schemas to probatio.
+    import probatio as vol
+except ImportError:  # pragma: no cover - older Home Assistant
+    import voluptuous as vol  # type: ignore[no-redef]
+
+__all__ = ["AddConfigEntryEntitiesCallback", "vol"]

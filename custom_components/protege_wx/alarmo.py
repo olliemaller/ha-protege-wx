@@ -33,6 +33,7 @@ from homeassistant.core import (
     CALLBACK_TYPE,
     Context,
     Event,
+    EventStateChangedData,
     HomeAssistant,
     State,
     callback,
@@ -49,6 +50,7 @@ from .const import (
 
 if TYPE_CHECKING:
     from . import ProtegeConfigEntry
+    from .alarm_control_panel import ProtegeArea
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,14 +72,15 @@ def _target(state: State | None) -> str | None:
     if state is None:
         return None
     value = state.state
-    if value in _ARMED:
-        return _ARMED[value]
+    armed = {str(key): mode for key, mode in _ARMED.items()}
+    if value in armed:
+        return armed[value]
     if value == AlarmControlPanelState.DISARMED:
         return "disarmed"
     if value == AlarmControlPanelState.ARMING:
         # Alarmo names the mode it's heading for.
         mode = str(state.attributes.get("arm_mode") or "")
-        return _ARMED.get(mode) or (mode.removeprefix("armed_") or None)
+        return armed.get(mode) or (mode.removeprefix("armed_") or None)
     return None
 
 
@@ -98,7 +101,7 @@ class AlarmoSync:
         self._remove: CALLBACK_TYPE | None = None
 
     @property
-    def _area(self):
+    def _area(self) -> ProtegeArea | None:
         return self.entry.runtime_data.areas.get(self.area_id)
 
     @callback
@@ -143,7 +146,7 @@ class AlarmoSync:
         )
 
     @callback
-    def _on_change(self, event: Event) -> None:
+    def _on_change(self, event: Event[EventStateChangedData]) -> None:
         area = self._area
         if area is None:
             return

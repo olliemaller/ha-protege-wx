@@ -17,9 +17,10 @@ import logging
 import statistics
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Any
 
 from aioprotegewx import (
     NO_RECORD,
@@ -305,17 +306,17 @@ async def async_discover(client: ProtegeClient) -> ProtegeSite:
     inputs: dict[int, InputInfo] = {}
     for rec_id, name in sorted(input_names.items()):
         detail = await _detail(client, TBL_INPUTS, rec_id)
-        areas: list[int] = []
+        member_of: list[int] = []
         zone_types: dict[int, str] = {}
         for slot in ("1", "2", "3", "4"):
             area = _valid_id(detail.get(f"Area{slot}"))
             if area is None:
                 continue
-            areas.append(area)
+            member_of.append(area)
             zone_type = _valid_id(detail.get(f"ZoneType{slot}"))
             if zone_type is not None:
                 zone_types[area] = zone_type_names.get(zone_type, "")
-        inputs[rec_id] = InputInfo(rec_id, name, areas, zone_types, details_known=bool(detail))
+        inputs[rec_id] = InputInfo(rec_id, name, member_of, zone_types, details_known=bool(detail))
 
     details_known = any(info.details_known for info in inputs.values())
     areas: dict[int, AreaInfo] = {}
@@ -401,8 +402,8 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         # one that was already under way when it sent a command.
         self.polls_started = 0
         self._last_health: float | None = None
-        self._seen: set[tuple] = set()
-        self._seen_order: deque[tuple] = deque()
+        self._seen: set[tuple[Any, ...]] = set()
+        self._seen_order: deque[tuple[Any, ...]] = deque()
         self._events_primed = False
         self._replayed: set[int] = set()  # id() of events announced late on the first read
         self._event_seq = 0
@@ -426,7 +427,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self._last_page_empty = False
         self._health_read_at: float | None = None  # when health was last read OK
         self.health = entry_health(hass, entry.entry_id)
-        self._delay_options: dict = dict(entry.options.get(OPT_DELAYS, {}))
+        self._delay_options: dict[str, Any] = dict(entry.options.get(OPT_DELAYS, {}))
         # Per area: the zone that set the alarm off (kept until disarmed), and
         # when the current exit or entry delay ends.
         self.alarm_cause: dict[int, str | None] = {}
@@ -532,13 +533,13 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         ):
             return True
         return any(
-            (old := previous.doors.get(rec)) is None
-            or (old.lock_code, old.position_code) != (new.lock_code, new.position_code)
-            for rec, new in state.doors.items()
+            (was := previous.doors.get(rec)) is None
+            or (was.lock_code, was.position_code) != (now.lock_code, now.position_code)
+            for rec, now in state.doors.items()
         )
 
     @staticmethod
-    def _keys(page: list[ProtegeEvent]) -> list[tuple]:
+    def _keys(page: list[ProtegeEvent]) -> list[tuple[Any, ...]]:
         """Identity of each line in a page. Identical lines in the same second
         (e.g. two denied cards) are told apart by their order in the page."""
         counts: dict[tuple[str, str], int] = {}
@@ -549,7 +550,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
             keys.append((*base, counts[base]))
         return keys
 
-    async def _read_events(self) -> list[tuple[tuple, ProtegeEvent]]:
+    async def _read_events(self) -> list[tuple[tuple[Any, ...], ProtegeEvent]]:
         """Read the latest page; return the (key, event) pairs not seen yet.
 
         Nothing is marked as seen here: that happens only once the whole update
@@ -591,7 +592,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                     break  # reached lines we had already seen
         return fresh
 
-    def _commit_events(self, fresh: list[tuple[tuple, ProtegeEvent]]) -> list[ParsedEvent]:
+    def _commit_events(self, fresh: list[tuple[tuple[Any, ...], ProtegeEvent]]) -> list[ParsedEvent]:
         """Mark lines as seen; return the meaningful ones that are news."""
         for key, _ in fresh:
             self._seen.add(key)
@@ -779,9 +780,9 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 self.alarm_cause[area_id] = self._find_cause(area_id, state)
             elif status.state_code is not None and status.state_code < 128:
                 self.alarm_cause[area_id] = None  # disarmed: the alarm is over
-        for input_id, status in state.inputs.items():
-            before = previous.inputs.get(input_id) if previous else None
-            if status.is_open and before is not None and before.is_open is False:
+        for input_id, zone in state.inputs.items():
+            zone_before = previous.inputs.get(input_id) if previous else None
+            if zone.is_open and zone_before is not None and zone_before.is_open is False:
                 self.last_triggered[input_id] = now
 
     def controller_time_utc(self, when: datetime | None) -> datetime | None:
@@ -860,6 +861,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
 
     def _event_entity_id(self, parsed: ParsedEvent) -> str | None:
         """The event entity a line belongs to, so the logbook links to it."""
+        obj: AreaInfo | DoorInfo | None
         if parsed.kind == KIND_AREA:
             obj, kind = self.site.area_by_name(parsed.subject or ""), "area"
         elif parsed.kind in (KIND_DOOR, KIND_ACCESS):
@@ -952,7 +954,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
 
     # ── arm-failure feedback ───────────────────────────────────────────────
 
-    def _area_inputs(self, area_id: int, stay: bool):
+    def _area_inputs(self, area_id: int, stay: bool) -> Iterator[InputInfo]:
         for info in self.site.inputs.values():
             if area_id not in info.areas and (info.details_known or not info.in_use):
                 continue

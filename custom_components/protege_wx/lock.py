@@ -1,19 +1,23 @@
 """Doors as locks."""
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
+from aioprotegewx import DoorStatus
 from homeassistant.components.lock import LockEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 
 from . import ProtegeConfigEntry
-from .compat import AddConfigEntryEntitiesCallback
+from .compat import AddConfigEntryEntitiesCallback, vol
 from .const import DEFAULT_VISITOR_MINUTES, OPT_VISITOR_MINUTES
 from .coordinator import DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
+
+if TYPE_CHECKING:
+    from .visitor import VisitorUnlocks
+
 
 PARALLEL_UPDATES = 1
 
@@ -58,11 +62,13 @@ class ProtegeDoorLock(ProtegeEntity, LockEntity):
         self._entry = entry
 
     @property
-    def _visitors(self):
-        return self._entry.runtime_data.visitors
+    def _visitors(self) -> VisitorUnlocks:
+        visitors = self._entry.runtime_data.visitors
+        assert visitors is not None
+        return visitors
 
     @property
-    def _status(self):
+    def _status(self) -> DoorStatus | None:
         return self.coordinator.data.doors.get(self.rec_id)
 
     @property

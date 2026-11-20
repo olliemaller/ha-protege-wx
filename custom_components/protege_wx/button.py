@@ -2,6 +2,8 @@
 and Rescan on the controller."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -11,6 +13,10 @@ from .compat import AddConfigEntryEntitiesCallback
 from .const import DEFAULT_VISITOR_MINUTES, DOMAIN, OPT_NIGHT_MODE, OPT_VISITOR_MINUTES
 from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
+
+if TYPE_CHECKING:
+    from .alarm_control_panel import ProtegeArea
+
 
 PARALLEL_UPDATES = 1
 
@@ -58,7 +64,7 @@ class _AreaButton(ProtegeEntity, ButtonEntity):
         self._attr_entity_registry_enabled_default = area.has_inputs is not False
 
     @property
-    def _area_entity(self):
+    def _area_entity(self) -> ProtegeArea:
         return self._entry.runtime_data.areas[self.rec_id]
 
 

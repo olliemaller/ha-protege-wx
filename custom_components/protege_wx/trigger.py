@@ -20,12 +20,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
+from .compat import vol
 from .const import DOMAIN
 
 # Not in homeassistant.const on every version this supports.
@@ -94,7 +94,8 @@ if SUPPORTED:
 
         @classmethod
         async def async_validate_config(cls, hass: HomeAssistant, config: dict[str, Any]) -> dict[str, Any]:
-            return cls._schema(config)
+            validated: dict[str, Any] = cls._schema(config)
+            return validated
 
         def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
             super().__init__(hass, config)
@@ -145,12 +146,13 @@ if SUPPORTED:
                     event.context,
                 )
 
-            remove = async_track_target_selector_state_change_event(
+            remove: Any = async_track_target_selector_state_change_event(
                 hass, self._target, state_changed, entity_filter
             )
             if inspect.isawaitable(remove):  # a coroutine in 2026.10+
                 remove = await remove
-            return remove
+            unsubscribe: CALLBACK_TYPE = remove
+            return unsubscribe
 
     class AccessGrantedTrigger(_EventTrigger):
         _kind = "door"
@@ -170,7 +172,7 @@ if SUPPORTED:
                 if who not in people:
                     return False
             method = self._options.get(CONF_METHOD, "any")
-            return method == "any" or attributes.get("method") == method
+            return bool(method == "any" or attributes.get("method") == method)
 
         def describe(self, name: str, attributes: dict[str, Any]) -> str:
             who = attributes.get("user") or attributes.get("by") or "someone"

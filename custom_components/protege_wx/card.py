@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 
@@ -22,7 +23,7 @@ _KEY = "card_registered"
 
 async def async_register_card(hass: HomeAssistant) -> None:
     """Register the card once per Home Assistant run (not per entry)."""
-    store: dict = hass.data.setdefault(DOMAIN, {})
+    store: dict[str, Any] = hass.data.setdefault(DOMAIN, {})
     if store.get(_KEY) or getattr(hass, "http", None) is None:
         return
     store[_KEY] = True

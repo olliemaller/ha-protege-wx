@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install "${{ matrix.harness }}" ${{ matrix.extra }} ruff
+      - run: pip install "${{ matrix.harness }}" ${{ matrix.extra }} ruff mypy pytest-cov
       - name: Install the integration's requirements
         run: pip install $(python -c "import json,glob;print(' '.join(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['requirements']))")
       - name: Install Assist's requirements (for the voice tests)
@@ -55,7 +55,15 @@ jobs:
           PY
           pip install -r assist-requirements.txt
       - run: ruff check custom_components tests
-      - run: pytest -q
+      - name: Strict typing (newest Home Assistant)
+        if: matrix.ha == 'latest'
+        run: mypy --strict --implicit-reexport --ignore-missing-imports custom_components/protege_wx
+      - name: Tests (coverage must stay at 95% or more on the newest Home Assistant)
+        if: matrix.ha == 'latest'
+        run: pytest -q --cov=custom_components.protege_wx --cov-report=term-missing --cov-fail-under=95
+      - name: Tests
+        if: matrix.ha != 'latest'
+        run: pytest -q
 
   # Boots a real Home Assistant core (the newest release, and the beta) against
   # the fake controller, so a breaking change shows up before it ships.

@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryState,
@@ -14,10 +13,12 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 
+from .coordinator import AreaInfo, InputInfo
+
 try:  # Home Assistant 2025.8+: the entry reloads itself after options change.
     from homeassistant.config_entries import OptionsFlowWithReload as _BaseOptionsFlow
 except ImportError:  # pragma: no cover - older Home Assistant
-    _BaseOptionsFlow = OptionsFlow
+    _BaseOptionsFlow = OptionsFlow  # type: ignore[misc,assignment]
 from aioprotegewx import (
     PROTOCOL_AUTO,
     TBL_AREAS,
@@ -35,6 +36,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from .compat import vol
 from .const import (
     ALARMO_DIRECTIONS,
     CONF_MAC,
@@ -142,7 +144,7 @@ async def check_permissions(client: ProtegeClient, health: dict[str, str]) -> li
     """
     missing: list[str] = []
 
-    async def empty(call) -> bool:
+    async def empty(call: Awaitable[Any]) -> bool:
         try:
             return not await call
         except ProtegeAuthError:
@@ -417,13 +419,13 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
         return ProtegeOptionsFlow()
 
 
-def _area_key(area, field: str) -> str:
+def _area_key(area: AreaInfo, field: str) -> str:
     """Field key shown as the label, since area names aren't translatable."""
     label = {"night": "Night arms as", "exit": "exit delay", "entry": "entry delay"}[field]
     return f"{area.name}: {label}"
 
 
-def _input_key(info) -> str:
+def _input_key(info: InputInfo) -> str:
     """Field key shown as the label, since input names aren't translatable."""
     return f"{info.name} (input {info.id})"
 
@@ -706,9 +708,9 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
     # ── users ──────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _schedule_schema(current: dict[str, Any]) -> dict:
+    def _schedule_schema(current: dict[str, Any]) -> dict[Any, Any]:
         """When the PIN works: on/off, days, hours and an end date (all optional)."""
-        fields: dict = {
+        fields: dict[Any, Any] = {
             vol.Required(USER_ENABLED, default=current.get(USER_ENABLED, True)): selector.BooleanSelector(),
             vol.Optional(USER_DAYS, default=current.get(USER_DAYS) or list(WEEKDAYS)): selector.SelectSelector(
                 selector.SelectSelectorConfig(

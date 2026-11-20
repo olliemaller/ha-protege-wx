@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1
+
+**Improved**
+
+- Fully typed (mypy strict, checked in CI) and tested to at least 95% in every module, with CI failing below that. The new tests cover the voice answers, every options step (including editing a user's PIN), the Alarmo sync, arm when ready, triggers, visitor unlocks and the all-areas panel.
+- Ready for Home Assistant's probatio schemas while still working on older versions.
+- Nothing changes in how the integration behaves.
+
 ## 0.8.0
 
 **Changed**

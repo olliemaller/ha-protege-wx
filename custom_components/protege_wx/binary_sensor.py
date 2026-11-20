@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-import voluptuous as vol
+from aioprotegewx import DoorStatus, InputStatus
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -18,7 +18,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from . import ProtegeConfigEntry
-from .compat import AddConfigEntryEntitiesCallback
+from .compat import AddConfigEntryEntitiesCallback, vol
 from .const import DEFAULT_INPUT_TYPE, DOMAIN, OPT_INPUT_TYPES
 from .coordinator import AreaInfo, DoorInfo, InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
@@ -85,7 +85,7 @@ class _InputBase(_ProtegeBinarySensor):
         self._attr_entity_registry_enabled_default = info.in_use
 
     @property
-    def _status(self):
+    def _status(self) -> InputStatus | None:
         return self.coordinator.data.inputs.get(self.rec_id)
 
     @property
@@ -179,7 +179,7 @@ class ProtegeDoorPositionSensor(_ProtegeBinarySensor):
         super().__init__(coordinator, "door", door.id, key="position", own_device=True)
 
     @property
-    def _status(self):
+    def _status(self) -> DoorStatus | None:
         return self.coordinator.data.doors.get(self.rec_id)
 
     @property
@@ -212,7 +212,7 @@ class ProtegeDoorAlertSensor(_ProtegeBinarySensor):
         self._attr_entity_registry_enabled_default = door.has_position_input is not False
 
     @property
-    def _status(self):
+    def _status(self) -> DoorStatus | None:
         return self.coordinator.data.doors.get(self.rec_id)
 
     @property
@@ -237,7 +237,7 @@ class ProtegeTroubleSensor(_ProtegeBinarySensor):
         self._attr_name = name
 
     @property
-    def _status(self):
+    def _status(self) -> InputStatus | None:
         return self.coordinator.data.trouble_inputs.get(self.rec_id)
 
     @property

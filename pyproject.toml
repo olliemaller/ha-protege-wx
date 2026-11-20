@@ -6,3 +6,7 @@ testpaths = ["tests"]
 # The same rules the checks run on every push.
 select = ["E", "F", "W", "B", "UP", "SIM", "I"]
 ignore = ["E501", "B904", "B017"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixtures imported from test_integration are redefined as test arguments.
+"tests/test_coverage.py" = ["F811"]

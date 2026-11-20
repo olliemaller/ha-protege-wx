@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-import voluptuous as vol
+from aioprotegewx import AreaStatus
 from aioprotegewx.events import KIND_AREA, ParsedEvent
 from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntity,
@@ -21,7 +21,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from . import ProtegeConfigEntry
 from .arm_when_ready import MODES as WAIT_MODES
 from .arm_when_ready import night_mode_for
-from .compat import AddConfigEntryEntitiesCallback
+from .compat import AddConfigEntryEntitiesCallback, vol
 from .const import (
     DEFAULT_ARM_WHEN_READY_MINUTES,
     DOMAIN,
@@ -210,7 +210,7 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
         return self._changed_by
 
     @property
-    def _status(self):
+    def _status(self) -> AreaStatus | None:
         return self.coordinator.data.areas.get(self.rec_id)
 
     @property
@@ -241,14 +241,14 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
         return AlarmControlPanelState.DISARMED  # 0, or 1-5 = disarmed, not ready
 
     @staticmethod
-    def _controller_mode(status) -> str:
+    def _controller_mode(status: AreaStatus) -> str:
         if "partial_armed" in status.flags:
             return "stay"
         if "instant_armed" in status.flags:
             return "instant"
         return "away"
 
-    def _armed_mode(self, status) -> AlarmControlPanelState:
+    def _armed_mode(self, status: AreaStatus) -> AlarmControlPanelState:
         mode = self._controller_mode(status)
         if self._requested and self._requested[0] == mode:
             return self._requested[1]  # e.g. Night mapped to stay, or Vacation

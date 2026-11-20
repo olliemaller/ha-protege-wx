@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -19,6 +19,11 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .describe import join_names
+
+if TYPE_CHECKING:
+    from . import ProtegeConfigEntry
+    from .alarm_control_panel import ProtegeArea
+
 
 _LOGGER = logging.getLogger(__name__)
 _KEY = "voice"
@@ -58,7 +63,7 @@ _STATE_WORDS = {
 }
 
 
-def _entries(hass: HomeAssistant) -> list:
+def _entries(hass: HomeAssistant) -> list[ProtegeConfigEntry]:
     return [
         entry
         for entry in hass.config_entries.async_entries(DOMAIN)
@@ -66,7 +71,7 @@ def _entries(hass: HomeAssistant) -> list:
     ]
 
 
-def _area_entities(entry) -> list:
+def _area_entities(entry: ProtegeConfigEntry) -> list[ProtegeArea]:
     return [
         area for area in entry.runtime_data.areas.values()
         if area.entity_id and area.area.has_inputs is not False
@@ -136,13 +141,15 @@ def answer_last_in(hass: HomeAssistant) -> str:
 _ANSWERS = {"armed": answer_armed, "ready": answer_ready, "last_in": answer_last_in}
 
 
-def _register(hass: HomeAssistant, sentences: list[str], handler) -> CALLBACK_TYPE | None:
+def _register(hass: HomeAssistant, sentences: list[str], handler: Any) -> CALLBACK_TYPE | None:
     """Register sentences with Assist, across Home Assistant versions.
 
     * 2026.x: agent_manager.register_trigger(sentences, callback)
     * 2025.7 to 2025.12: agent_manager.register_trigger(TriggerDetails(...))
     * before 2025.7: the default agent's register_trigger(sentences, callback)
     """
+    # The conversation APIs differ by version, so they're used untyped here.
+    get_agent_manager: Any
     try:
         from homeassistant.components.conversation.agent_manager import (
             get_agent_manager,
@@ -150,33 +157,43 @@ def _register(hass: HomeAssistant, sentences: list[str], handler) -> CALLBACK_TY
     except ImportError:
         get_agent_manager = None
     if get_agent_manager is not None:
-        manager = get_agent_manager(hass)
+        manager: Any = get_agent_manager(hass)
         if hasattr(manager, "register_trigger"):
+            trigger: Any
             try:
-                from homeassistant.components.conversation.trigger import TriggerDetails
-            except ImportError:
-                return manager.register_trigger(sentences, handler)
-            return manager.register_trigger(TriggerDetails(sentences, handler))
+                from homeassistant.components.conversation import trigger
+            except ImportError:  # pragma: no cover - very old Home Assistant
+                trigger = None
+            details: Any = getattr(trigger, "TriggerDetails", None)
+            if details is None:
+                result: CALLBACK_TYPE = manager.register_trigger(sentences, handler)
+                return result
+            result = manager.register_trigger(details(sentences, handler))
+            return result
     try:
-        from homeassistant.components.conversation.const import DATA_DEFAULT_ENTITY
+        from homeassistant.components.conversation import const as conversation_const
     except ImportError:
         return None
-    agent = hass.data.get(DATA_DEFAULT_ENTITY)
-    return agent.register_trigger(sentences, handler) if agent else None
+    key = getattr(conversation_const, "DATA_DEFAULT_ENTITY", None)
+    agent: Any = hass.data.get(key) if key else None
+    if not agent:
+        return None
+    remove: CALLBACK_TYPE = agent.register_trigger(sentences, handler)
+    return remove
 
 
 @callback
 def async_setup_voice(hass: HomeAssistant) -> CALLBACK_TYPE:
     """Register the sentences (once); returns a release for the entry's unload."""
-    store: dict = hass.data.setdefault(DOMAIN, {})
+    store: dict[str, Any] = hass.data.setdefault(DOMAIN, {})
     state = store.setdefault(_KEY, {"users": 0, "remove": []})
     state["users"] += 1
     if state["users"] == 1 and "conversation" in hass.config.components:
         for key, sentences in SENTENCES.items():
             answer = _ANSWERS[key]
 
-            async def handler(_user_input, _result, answer=answer) -> str:
-                return answer(hass)
+            async def handler(_user_input: Any, _result: Any, answer: Any = answer) -> str:
+                return str(answer(hass))
 
             try:
                 remove = _register(hass, sentences, handler)

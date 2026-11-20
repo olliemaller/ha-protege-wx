@@ -1,6 +1,9 @@
 """Input bypass as a select (not bypassed / until disarmed / permanent)."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from aioprotegewx import InputStatus
 from homeassistant.components.select import SelectEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -12,6 +15,10 @@ from .compat import AddConfigEntryEntitiesCallback
 from .const import OPT_NIGHT_MODE
 from .coordinator import AreaInfo, InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
+
+if TYPE_CHECKING:
+    from .arm_when_ready import ArmWhenReady
+
 
 PARALLEL_UPDATES = 1
 
@@ -52,7 +59,7 @@ class ProtegeBypassSelect(ProtegeEntity, SelectEntity):
         self._attr_entity_registry_enabled_default = info.in_use
 
     @property
-    def _status(self):
+    def _status(self) -> InputStatus | None:
         return self.coordinator.data.inputs.get(self.rec_id)
 
     @property
@@ -87,15 +94,17 @@ class ProtegeArmWhenReadyModeSelect(ProtegeEntity, SelectEntity, RestoreEntity):
         self._attr_current_option = "away"
 
     @property
-    def _waits(self):
-        return self.coordinator.config_entry.runtime_data.arm_when_ready
+    def _waits(self) -> ArmWhenReady:
+        waits: ArmWhenReady | None = self.coordinator.config_entry.runtime_data.arm_when_ready
+        assert waits is not None
+        return waits
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         if last is not None and last.state in self.options:
             self._attr_current_option = last.state
-        self._waits.preferred[self.rec_id] = self._attr_current_option
+        self._waits.preferred[self.rec_id] = self._attr_current_option or "away"
 
     async def async_select_option(self, option: str) -> None:
         self._attr_current_option = option

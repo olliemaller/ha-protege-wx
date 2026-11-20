@@ -14,8 +14,8 @@ rules:
   common-modules: done
   config-flow: done
   config-flow-test-coverage:
-    status: todo
-    comment: The user and PIN options steps aren't all tested yet (config_flow.py 81%).
+    status: done
+    comment: Every config, discovery, reauth, reconfigure and options path is tested (config_flow.py 97%).
   dependency-transparency:
     status: done
     comment: aioprotegewx is MIT, on PyPI, and published from GitHub Actions with trusted publishing.
@@ -44,8 +44,8 @@ rules:
   parallel-updates: done
   reauthentication-flow: done
   test-coverage:
-    status: todo
-    comment: 90% overall; voice.py, config_flow.py and __init__.py are below 95%.
+    status: done
+    comment: 99% overall and at least 95% in every module; CI fails below 95%.
 
   # Gold
   devices: done
@@ -80,5 +80,5 @@ rules:
     status: exempt
     comment: The controller needs a session with its own cookie jar, so it can't share Home Assistant's.
   strict-typing:
-    status: todo
-    comment: mypy --strict reports about 100 issues, mostly missing annotations.
+    status: done
+    comment: mypy --strict is clean and checked in CI; aioprotegewx ships py.typed.

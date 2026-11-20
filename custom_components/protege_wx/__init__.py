@@ -94,7 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
     # One login guard per entry and password, kept across reloads and setup
     # retries so they can't get round the login limits. These credentials
     # worked when the entry was created, hence known_good.
-    guards: dict = hass.data.setdefault(DOMAIN, {})
+    guards: dict[Any, Any] = hass.data.setdefault(DOMAIN, {})
     guard_key = (entry.entry_id, sha1_hex(entry.data[CONF_PASSWORD]))
     for key in [k for k in guards if k[0] == entry.entry_id and k != guard_key]:
         guards.pop(key)  # the password changed: start afresh
@@ -155,7 +155,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
     entry.async_on_unload(visitors.async_stop)
     entry.async_on_unload(_close)
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _close))
-    if not _HAS_RELOADING_OPTIONS_FLOW:
+    if not _HAS_RELOADING_OPTIONS_FLOW:  # pragma: no cover - Home Assistant before 2025.8
         entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -193,7 +193,7 @@ def _register_devices(
     )
     if _SUPPORTS_VIA_DEVICE_ID:
         parent: dict[str, Any] = {"via_device_id": controller.id}
-    else:
+    else:  # pragma: no cover - Home Assistant before 2026.10
         parent = {"via_device": next(iter(controller.identifiers))}
     site = coordinator.site
     chosen_outputs = {int(rec_id) for rec_id in entry.options.get(OPT_OUTPUTS, [])}
@@ -219,7 +219,7 @@ def _register_devices(
             )
 
 
-async def _async_reload_on_options(hass: HomeAssistant, entry: ProtegeConfigEntry) -> None:
+async def _async_reload_on_options(hass: HomeAssistant, entry: ProtegeConfigEntry) -> None:  # pragma: no cover
     await hass.config_entries.async_reload(entry.entry_id)
 
 

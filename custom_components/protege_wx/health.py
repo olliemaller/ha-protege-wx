@@ -13,6 +13,7 @@ from __future__ import annotations
 import statistics
 import time
 from collections.abc import Iterable
+from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
@@ -40,11 +41,12 @@ ALL_ISSUES = (ISSUE_UNREACHABLE, ISSUE_LOW_VOLTAGE, ISSUE_EVENT_LOG, ISSUE_CLOCK
 
 def entry_health(hass: HomeAssistant, entry_id: str) -> EntryHealth:
     """The health tracker for an entry, kept across setup retries and reloads."""
-    store: dict = hass.data.setdefault(DOMAIN, {})
+    store: dict[Any, Any] = hass.data.setdefault(DOMAIN, {})
     key = ("health", entry_id)
     if key not in store:
         store[key] = EntryHealth(hass, entry_id)
-    return store[key]
+    health: EntryHealth = store[key]
+    return health
 
 
 class EntryHealth:

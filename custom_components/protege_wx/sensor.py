@@ -296,7 +296,7 @@ async def _setup_people(
     first sight and remembered (when and where) across restarts."""
     # Kept in memory across reloads too, since a delayed save may not have
     # been written yet when the entry reloads.
-    cache: dict = hass.data.setdefault(DOMAIN, {})
+    cache: dict[Any, Any] = hass.data.setdefault(DOMAIN, {})
     key = ("people", entry.entry_id)
     if key not in cache:
         store: Store[dict[str, Any]] = Store(

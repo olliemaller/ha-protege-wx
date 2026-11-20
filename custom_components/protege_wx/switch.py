@@ -3,9 +3,9 @@ chosen in the options."""
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
+from aioprotegewx import DoorStatus, OutputStatus
 from aioprotegewx.client import MAX_TIMED_SECONDS
 from aioprotegewx.events import KIND_AREA, ParsedEvent
 from homeassistant.components.switch import SwitchEntity
@@ -16,10 +16,15 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import ProtegeConfigEntry
-from .compat import AddConfigEntryEntitiesCallback
+from .compat import AddConfigEntryEntitiesCallback, vol
 from .const import DOMAIN, OPT_OUTPUTS
 from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
+
+if TYPE_CHECKING:
+    from .alarm_control_panel import ProtegeArea
+    from .arm_when_ready import ArmWhenReady
+
 
 PARALLEL_UPDATES = 1
 
@@ -82,7 +87,7 @@ class ProtegeHoldOpenSwitch(ProtegeEntity, SwitchEntity):
         super().__init__(coordinator, "door", door.id, key="hold_open", own_device=True)
 
     @property
-    def _status(self):
+    def _status(self) -> DoorStatus | None:
         return self.coordinator.data.doors.get(self.rec_id)
 
     @property
@@ -128,7 +133,7 @@ class ProtegeOutputSwitch(ProtegeEntity, SwitchEntity):
         super().__init__(coordinator, "output", rec_id, own_device=True)
 
     @property
-    def _status(self):
+    def _status(self) -> OutputStatus | None:
         return self.coordinator.data.outputs.get(self.rec_id)
 
     @property
@@ -235,8 +240,10 @@ class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
         super().__init__(coordinator, "area", area.id, key="arm_when_ready", own_device=True)
 
     @property
-    def _waits(self):
-        return self.coordinator.config_entry.runtime_data.arm_when_ready
+    def _waits(self) -> ArmWhenReady:
+        waits: ArmWhenReady | None = self.coordinator.config_entry.runtime_data.arm_when_ready
+        assert waits is not None
+        return waits
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -244,7 +251,7 @@ class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return self._waits.waiting(self.rec_id)
+        return bool(self._waits.waiting(self.rec_id))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -256,8 +263,8 @@ class ProtegeArmWhenReadySwitch(ProtegeEntity, SwitchEntity):
         details["open_zones"] = self.coordinator.open_zones(self.rec_id, stay=stay)
         return details
 
-    def _panel(self):
-        panel = self.coordinator.config_entry.runtime_data.areas.get(self.rec_id)
+    def _panel(self) -> ProtegeArea:
+        panel: ProtegeArea | None = self.coordinator.config_entry.runtime_data.areas.get(self.rec_id)
         if panel is None:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="area_not_ready")
         return panel

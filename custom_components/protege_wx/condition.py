@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
+from .compat import vol
 from .const import DOMAIN
 
 # Not in homeassistant.const on every version this supports.
@@ -68,7 +68,8 @@ if SUPPORTED:
 
         @classmethod
         async def async_validate_config(cls, hass: HomeAssistant, config: dict[str, Any]) -> dict[str, Any]:
-            return _SCHEMA(config)
+            validated: dict[str, Any] = _SCHEMA(config)
+            return validated
 
         def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
             super().__init__(hass, config)

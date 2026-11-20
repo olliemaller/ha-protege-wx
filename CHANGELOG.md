@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+**Improved**
+
+- Setup errors (controller unreachable, login rejected) are translatable.
+- Brand images trimmed to Home Assistant's rules, and a `quality_scale.yaml` self-assessment against every quality scale rule.
+- Docs: removing the integration, and known limitations.
+
 ## 0.6.0
 
 **New**

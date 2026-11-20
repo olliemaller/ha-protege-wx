@@ -15,6 +15,13 @@
 | **No "Last seen" sensor for someone** | It's created the first time that person uses a card or PIN at a door after the integration is running. Entries read while Home Assistant was restarting don't count. |
 | **Something seems stuck** | Check the **Connection** sensor on the controller device: it shows whether the link is up, reconnecting or backing off to protect the controller. |
 
+## Known limitations
+
+- **Plain HTTP only.** Controllers whose web interface is HTTPS-only need [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) instead.
+- **Polled, not pushed.** Changes show up within about a second (doors, troubles and outputs within 5 s), not instantly as with the Automation and Control licence.
+- **PINs are Home Assistant's own.** Arming and disarming use the users you add in the integration's options, checked by Home Assistant. They're separate from the controller's keypad users.
+- **Tested on one controller** (web interface 2.3.x, WX firmware 4.00). Older web protocol versions are supported but less tested.
+
 ## Diagnostics and logs
 
 Download diagnostics from the integration's ⋮ menu. Passwords, PINs, serials and names in event lines are redacted. Attach it to a [bug report](https://github.com/olliemaller/ha-protege-wx/issues/new/choose).

@@ -562,6 +562,12 @@
     },
     "mode_not_allowed": {
       "message": "Arming {area} in {mode} mode is turned off. Turn on its \"Allow arm {mode}\" switch to use it."
+    },
+    "setup_failed": {
+      "message": "Cannot set up the controller: {error}"
+    },
+    "setup_auth_failed": {
+      "message": "The controller rejected the login: {error}"
     }
   },
   "services": {

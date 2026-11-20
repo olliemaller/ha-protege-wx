@@ -126,12 +126,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ProtegeConfigEntry) -> b
         await coordinator.async_config_entry_first_refresh()
     except ProtegeAuthError as err:
         await _close()
-        raise ConfigEntryAuthFailed(str(err)) from err
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN,
+            translation_key="setup_auth_failed",
+            translation_placeholders={"error": str(err)},
+        ) from err
     except ProtegeError as err:
         await _close()
         # Counts towards the "unreachable" Repair even across setup retries.
         entry_health(hass, entry.entry_id).record_failure(client.host)
-        raise ConfigEntryNotReady(f"Cannot set up the controller: {err}") from err
+        raise ConfigEntryNotReady(
+            translation_domain=DOMAIN,
+            translation_key="setup_failed",
+            translation_placeholders={"error": str(err)},
+        ) from err
     except BaseException:
         await _close()
         raise

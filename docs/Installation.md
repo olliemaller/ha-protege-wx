@@ -42,4 +42,10 @@ Updating Home Assistant to 2026.11 moves this to the Marketplace automatically. 
 2. Unzip it into `config/custom_components/protege_wx/`.
 3. Restart Home Assistant.
 
+## Removing it
+
+1. Go to **Settings** > **Devices & services** > **ICT Protege WX**, open the ⋮ menu on the controller and select **Delete**. The integration logs out of the controller as it goes.
+2. If you installed it through the Marketplace or HACS, remove it there too, then restart Home Assistant.
+3. Nothing changes on the controller. You can delete the Home Assistant operator in the web interface if you made one just for this.
+
 Next: [Setup](Setup.md).

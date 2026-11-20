@@ -9,14 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.event import EventEntity
-from homeassistant.core import HomeAssistant, callback
-
-from . import ProtegeConfigEntry
-from .compat import AddConfigEntryEntitiesCallback
-from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
-from .entity import ProtegeEntity
-from .wxapi.events import (
+from aioprotegewx.events import (
     AREA_EVENT_TYPES,
     CONTROLLER_EVENT_TYPES,
     DOOR_EVENT_TYPES,
@@ -28,6 +21,13 @@ from .wxapi.events import (
     KIND_TROUBLE,
     ParsedEvent,
 )
+from homeassistant.components.event import EventEntity
+from homeassistant.core import HomeAssistant, callback
+
+from . import ProtegeConfigEntry
+from .compat import AddConfigEntryEntitiesCallback
+from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
+from .entity import ProtegeEntity
 
 PARALLEL_UPDATES = 0
 

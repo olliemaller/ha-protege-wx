@@ -29,8 +29,11 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/olliemaller/ha-protege-wx/issues",
   "loggers": [
+    "aioprotegewx",
     "custom_components.protege_wx"
   ],
-  "requirements": [],
-  "version": "0.7.0"
+  "requirements": [
+    "aioprotegewx==0.1.0"
+  ],
+  "version": "0.8.0"
 }

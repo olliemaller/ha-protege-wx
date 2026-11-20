@@ -21,6 +21,34 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from aioprotegewx import (
+    NO_RECORD,
+    TBL_AREAS,
+    TBL_DOORS,
+    TBL_INPUT_TYPES,
+    TBL_INPUTS,
+    TBL_OUTPUTS,
+    TBL_TROUBLE_INPUTS,
+    AreaStatus,
+    DoorStatus,
+    EventParser,
+    InputStatus,
+    OutputStatus,
+    ParsedEvent,
+    ProtegeAuthError,
+    ProtegeClient,
+    ProtegeError,
+    ProtegeEvent,
+)
+from aioprotegewx.events import (
+    KIND_ACCESS,
+    KIND_AREA,
+    KIND_DOOR,
+    KIND_EMERGENCY,
+    KIND_INPUT,
+    KIND_NOISE,
+    KIND_TROUBLE,
+)
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -52,34 +80,6 @@ from .const import (
 from .describe import describe
 from .health import entry_health
 from .users import UserCodes
-from .wxapi import (
-    NO_RECORD,
-    TBL_AREAS,
-    TBL_DOORS,
-    TBL_INPUT_TYPES,
-    TBL_INPUTS,
-    TBL_OUTPUTS,
-    TBL_TROUBLE_INPUTS,
-    AreaStatus,
-    DoorStatus,
-    EventParser,
-    InputStatus,
-    OutputStatus,
-    ParsedEvent,
-    ProtegeAuthError,
-    ProtegeClient,
-    ProtegeError,
-    ProtegeEvent,
-)
-from .wxapi.events import (
-    KIND_ACCESS,
-    KIND_AREA,
-    KIND_DOOR,
-    KIND_EMERGENCY,
-    KIND_INPUT,
-    KIND_NOISE,
-    KIND_TROUBLE,
-)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -901,7 +901,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         return "connected" if self.last_update_success else "reconnecting"
 
     def logins_last_window(self) -> int:
-        from .wxapi.client import LOGIN_WINDOW
+        from aioprotegewx.client import LOGIN_WINDOW
 
         now = time.monotonic()
         return sum(1 for t in self.client.guard.login_times if now - t <= LOGIN_WINDOW)

@@ -10,6 +10,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
+from aioprotegewx import (
+    PROTOCOL_AUTO,
+    LoginGuard,
+    ProtegeAuthError,
+    ProtegeClient,
+    ProtegeError,
+)
+from aioprotegewx.crypto import sha1_hex
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
@@ -38,14 +46,6 @@ from .entity import controller_device, controller_uid, object_identifier
 from .health import entry_health
 from .visitor import VisitorUnlocks, visitor_store
 from .voice import async_setup_voice
-from .wxapi import (
-    PROTOCOL_AUTO,
-    LoginGuard,
-    ProtegeAuthError,
-    ProtegeClient,
-    ProtegeError,
-)
-from .wxapi.crypto import sha1_hex
 
 if TYPE_CHECKING:
     from .alarm_control_panel import ProtegeArea

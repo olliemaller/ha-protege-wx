@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 import voluptuous as vol
+from aioprotegewx.events import KIND_AREA, ParsedEvent
 from homeassistant.components.alarm_control_panel import (
     AlarmControlPanelEntity,
     AlarmControlPanelEntityFeature,
@@ -31,7 +32,6 @@ from .const import (
 from .coordinator import ARM_FAILED, ARM_OK, AreaInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 from .users import UserCodes
-from .wxapi.events import KIND_AREA, ParsedEvent
 
 PARALLEL_UPDATES = 1
 

@@ -15,4 +15,4 @@ A controller whose session table filled with abandoned sessions has been seen to
 - **No operator lockouts.** A wrong password stops all login attempts after at most two tries and asks you to sign in again.
 - **Small, cheap polls.** At the default 1 s interval, every second it reads area status, zone status and the newest event-log page. Doors, troubles and outputs are read when the log says they changed, and at least every 5 s. Health is read every minute.
 - **Honest states.** Unknown or unreadable states show as unavailable, never as a reassuring *disarmed*, *locked* or *closed*. An arm is reported as successful only after the controller confirms it.
-- **Local only.** It talks only to your controller over your own network. No cloud, and no extra Python packages.
+- **Local only.** It talks only to your controller over your own network. No cloud. The protocol code is its own library, [aioprotegewx](https://github.com/olliemaller/aioprotegewx), which Home Assistant installs for you.

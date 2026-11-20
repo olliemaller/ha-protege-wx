@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 from aiohttp.test_utils import TestServer
+from aioprotegewx import client as client_module
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
@@ -31,7 +32,6 @@ from custom_components.protege_wx.diagnostics import (
     redact_event_text,
 )
 from custom_components.protege_wx.users import make_user
-from custom_components.protege_wx.wxapi import client as client_module
 
 from .fake_controller import FakeController
 
@@ -1766,7 +1766,7 @@ async def test_late_logbook_lines_say_when(hass: HomeAssistant, controller) -> N
 async def test_failed_stay_arm_names_only_stay_zones(hass: HomeAssistant, controller) -> None:
     import time
 
-    from custom_components.protege_wx.wxapi.events import (
+    from aioprotegewx.events import (
         KIND_AREA,
         ParsedEvent,
         ProtegeEvent,
@@ -1795,7 +1795,7 @@ def test_person_slugs_stay_apart() -> None:
 
 
 def test_emergency_words_in_names_are_not_emergencies() -> None:
-    from custom_components.protege_wx.wxapi.events import EventParser, ProtegeEvent
+    from aioprotegewx.events import EventParser, ProtegeEvent
 
     parser = EventParser(["Alarm", "Panic Room"], ["Front Door"], ["Living"], [])
 
@@ -1854,7 +1854,7 @@ async def test_failed_lock_keeps_the_visitor_relock(hass: HomeAssistant, control
     client = entry.runtime_data.client
 
     async def broken(_door):
-        from custom_components.protege_wx.wxapi import ProtegeConnectionError
+        from aioprotegewx import ProtegeConnectionError
 
         raise ProtegeConnectionError("busy")
 

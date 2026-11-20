@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from aioprotegewx.events import KIND_ACCESS, ParsedEvent
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
@@ -21,7 +22,6 @@ from .compat import AddConfigEntryEntitiesCallback
 from .const import DOMAIN
 from .coordinator import AreaInfo, InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
-from .wxapi.events import KIND_ACCESS, ParsedEvent
 
 PARALLEL_UPDATES = 0
 

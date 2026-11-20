@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable
 
+from aioprotegewx import ProtegeAuthError, ProtegeError
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
@@ -10,7 +11,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_MAC, DOMAIN, MANUFACTURER
 from .coordinator import ProtegeCoordinator
-from .wxapi import ProtegeAuthError, ProtegeError
 
 
 def controller_uid(coordinator: ProtegeCoordinator) -> str:

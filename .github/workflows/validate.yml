@@ -44,6 +44,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install "${{ matrix.harness }}" ${{ matrix.extra }} ruff
+      - name: Install the integration's requirements
+        run: pip install $(python -c "import json,glob;print(' '.join(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['requirements']))")
       - name: Install Assist's requirements (for the voice tests)
         run: |
           python - <<'PY' > assist-requirements.txt

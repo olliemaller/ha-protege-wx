@@ -6,6 +6,8 @@ import re
 from typing import Any
 
 import voluptuous as vol
+from aioprotegewx.client import MAX_TIMED_SECONDS
+from aioprotegewx.events import KIND_AREA, ParsedEvent
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
@@ -18,8 +20,6 @@ from .compat import AddConfigEntryEntitiesCallback
 from .const import DOMAIN, OPT_OUTPUTS
 from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
-from .wxapi.client import MAX_TIMED_SECONDS
-from .wxapi.events import KIND_AREA, ParsedEvent
 
 PARALLEL_UPDATES = 1
 

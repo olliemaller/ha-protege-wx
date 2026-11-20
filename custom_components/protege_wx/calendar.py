@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
+from aioprotegewx.events import KIND_AREA, KIND_EMERGENCY, ParsedEvent
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
@@ -20,7 +21,6 @@ from .compat import AddConfigEntryEntitiesCallback
 from .const import DOMAIN
 from .coordinator import ProtegeCoordinator
 from .entity import ProtegeEntity
-from .wxapi.events import KIND_AREA, KIND_EMERGENCY, ParsedEvent
 
 PARALLEL_UPDATES = 0
 MAX_ENTRIES = 500

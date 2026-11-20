@@ -14,7 +14,7 @@ already log every open and close, and raw lines would only add noise.
 """
 from __future__ import annotations
 
-from .wxapi.events import (
+from aioprotegewx.events import (
     KIND_ACCESS,
     KIND_AREA,
     KIND_DOOR,

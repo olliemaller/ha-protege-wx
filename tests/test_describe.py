@@ -4,9 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
+from aioprotegewx.events import EventParser, ProtegeEvent
 
 from custom_components.protege_wx.describe import describe, join_names
-from custom_components.protege_wx.wxapi.events import EventParser, ProtegeEvent
 
 PARSER = EventParser(
     ["Alarm"], ["Front Door", "Gate"], ["Living", "Kitchen"], ["Analog Expander 1 Mains Failure"]

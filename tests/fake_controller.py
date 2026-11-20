@@ -17,8 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from aiohttp import web
-
-from custom_components.protege_wx.wxapi import crypto
+from aioprotegewx import crypto
 
 LOCKED_OUT = "FAIL:120"
 NAMES = {

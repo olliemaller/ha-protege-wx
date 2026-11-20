@@ -18,6 +18,17 @@ try:  # Home Assistant 2025.8+: the entry reloads itself after options change.
     from homeassistant.config_entries import OptionsFlowWithReload as _BaseOptionsFlow
 except ImportError:  # pragma: no cover - older Home Assistant
     _BaseOptionsFlow = OptionsFlow
+from aioprotegewx import (
+    PROTOCOL_AUTO,
+    TBL_AREAS,
+    TBL_DOORS,
+    TBL_INPUTS,
+    ProtegeAuthError,
+    ProtegeClient,
+    ProtegeConnectionError,
+    ProtegeError,
+    normalise_host,
+)
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
@@ -68,17 +79,6 @@ from .const import (
     WEEKDAYS,
 )
 from .users import UserCodes, describe_schedule, make_user
-from .wxapi import (
-    PROTOCOL_AUTO,
-    TBL_AREAS,
-    TBL_DOORS,
-    TBL_INPUTS,
-    ProtegeAuthError,
-    ProtegeClient,
-    ProtegeConnectionError,
-    ProtegeError,
-    normalise_host,
-)
 
 _LOGGER = logging.getLogger(__name__)
 

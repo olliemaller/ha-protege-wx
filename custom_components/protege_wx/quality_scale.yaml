@@ -17,8 +17,8 @@ rules:
     status: todo
     comment: The user and PIN options steps aren't all tested yet (config_flow.py 81%).
   dependency-transparency:
-    status: todo
-    comment: The controller client (wxapi) lives inside the integration; it should move to a library on PyPI.
+    status: done
+    comment: aioprotegewx is MIT, on PyPI, and published from GitHub Actions with trusted publishing.
   docs-actions: done
   docs-conditions: done
   docs-high-level-description: done

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+**Changed**
+
+- The controller client moved into its own library, [aioprotegewx](https://github.com/olliemaller/aioprotegewx) on PyPI, so other projects can use it. Home Assistant installs it for you; nothing changes in how the integration works.
+
+**Fixed**
+
+- When two names overlap (doors "Front" and "Front Door", say), an event for the longer one was matched to the shorter. It now matches the right one.
+
 ## 0.7.0
 
 **New**

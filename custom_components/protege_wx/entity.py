@@ -5,10 +5,10 @@ from collections.abc import Awaitable
 
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER
+from .const import CONF_MAC, DOMAIN, MANUFACTURER
 from .coordinator import ProtegeCoordinator
 from .wxapi import ProtegeAuthError, ProtegeError
 
@@ -31,7 +31,9 @@ def object_identifier(coordinator: ProtegeCoordinator, kind: str, rec_id: int) -
 
 def controller_device(coordinator: ProtegeCoordinator) -> DeviceInfo:
     site = coordinator.site
+    mac = coordinator.config_entry.data.get(CONF_MAC)
     return DeviceInfo(
+        connections={(CONNECTION_NETWORK_MAC, mac)} if mac else set(),
         identifiers={(DOMAIN, controller_uid(coordinator))},
         name="Protege WX controller",
         manufacturer=MANUFACTURER,

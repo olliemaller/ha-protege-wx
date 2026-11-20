@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+**New**
+
+- **Found automatically.** A controller that gets its address by DHCP shows up under **Discovered**, with its address filled in; you add the operator login. ICT devices are recognised by their MAC address (starting `00:1B:C2`).
+- **Follows a new address.** Once Home Assistant knows a controller's MAC address, it updates the address by itself if the controller moves. A controller you added by hand learns its MAC the first time it's seen.
+
 ## 0.6.1
 
 **Improved**

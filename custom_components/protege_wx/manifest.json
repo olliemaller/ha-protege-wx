@@ -16,6 +16,14 @@
   ],
   "config_flow": true,
   "dependencies": [],
+  "dhcp": [
+    {
+      "macaddress": "001BC2*"
+    },
+    {
+      "registered_devices": true
+    }
+  ],
   "documentation": "https://github.com/olliemaller/ha-protege-wx",
   "integration_type": "hub",
   "iot_class": "local_polling",
@@ -24,5 +32,5 @@
     "custom_components.protege_wx"
   ],
   "requirements": [],
-  "version": "0.6.1"
+  "version": "0.7.0"
 }

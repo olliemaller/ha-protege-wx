@@ -51,11 +51,9 @@ rules:
   devices: done
   diagnostics: done
   discovery:
-    status: todo
-    comment: Could be found by DHCP using ICT's MAC address prefix.
-  discovery-update-info:
-    status: todo
-    comment: Needs discovery first.
+    status: done
+    comment: DHCP, by ICT's MAC address prefix (00:1B:C2) and registered devices.
+  discovery-update-info: done
   docs-data-update: done
   docs-examples: done
   docs-known-limitations: done

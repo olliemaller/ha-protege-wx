@@ -17,7 +17,7 @@ In the Protege web interface, create an **operator** for Home Assistant, for exa
 
 [![Add the integration to your Home Assistant.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=protege_wx)
 
-Go to **Settings > Devices & services > Add integration > ICT Protege WX** and enter:
+If the controller gets its address by DHCP, it may already be waiting under **Settings > Devices & services > Discovered**, with its address filled in (port 7377 assumed; change it if yours differs). Otherwise go to **Settings > Devices & services > Add integration > ICT Protege WX** and enter:
 
 - **Host:** the web interface address and port, for example `192.168.1.10:7377`. `http://` is optional. HTTPS isn't supported; see [Installation](Installation.md).
 - **Operator username and password.** The password is never sent to the controller; login is a challenge/response.

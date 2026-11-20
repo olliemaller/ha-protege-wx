@@ -2547,3 +2547,59 @@ async def test_door_schedule_blueprint_follows_the_schedule(hass: HomeAssistant,
     await hass.async_block_till_done()
     await _refresh(hass, entry)
     assert _state(hass, "switch.front_door_hold_open") == "off"
+
+
+# ── DHCP discovery ──────────────────────────────────────────────────────────
+
+from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo  # noqa: E402
+
+from custom_components.protege_wx.const import CONF_MAC  # noqa: E402
+
+
+async def test_dhcp_offers_controller(hass: HomeAssistant, controller) -> None:
+    """A device with ICT's MAC prefix is offered with its address filled in."""
+    info = DhcpServiceInfo(ip="192.0.2.77", hostname="protege", macaddress="001bc2aabbcc")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_DHCP}, data=info
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+    schema_host = next(k for k in result["data_schema"].schema if k == CONF_HOST)
+    assert schema_host.description["suggested_value"] == "192.0.2.77:7377"
+    # The real fake controller is on another address; the user corrects it.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: controller.host, CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "secret"},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MAC] == "00:1b:c2:aa:bb:cc"
+    assert result["result"].unique_id == "A1B2C3D4"
+    await hass.async_block_till_done()
+    device = dr.async_entries_for_config_entry(dr.async_get(hass), result["result"].entry_id)
+    assert any(
+        (dr.CONNECTION_NETWORK_MAC, "00:1b:c2:aa:bb:cc") in d.connections for d in device
+    )
+
+
+async def test_dhcp_remembers_mac_then_follows_a_move(hass: HomeAssistant) -> None:
+    """A controller set up by hand gets its MAC saved, then a new address is followed."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="A1B2C3D4",
+        data={CONF_HOST: "192.0.2.10:7377", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+    )
+    entry.add_to_hass(hass)
+    info = DhcpServiceInfo(ip="192.0.2.10", hostname="protege", macaddress="001bc2aabbcc")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_DHCP}, data=info
+    )
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_MAC] == "00:1b:c2:aa:bb:cc"
+
+    moved = DhcpServiceInfo(ip="192.0.2.20", hostname="protege", macaddress="001bc2aabbcc")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_DHCP}, data=moved
+    )
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_HOST] == "192.0.2.20:7377"
+    await hass.async_block_till_done()

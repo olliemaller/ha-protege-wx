@@ -8,6 +8,9 @@ MANUFACTURER: Final = "Integrated Control Technology"
 
 CONF_PROTOCOL: Final = "protocol"
 CONF_SERIAL: Final = "serial"
+CONF_MAC: Final = "mac"
+#: The web interface's usual HTTP port, for controllers found by DHCP.
+DEFAULT_WEB_PORT: Final = 7377
 
 # Options
 OPT_SCAN_INTERVAL: Final = "scan_interval"  # fast loop, seconds

@@ -55,7 +55,8 @@
       "reauth_successful": "Logged in again.",
       "reconfigure_successful": "Connection details updated.",
       "wrong_controller": "That address belongs to a different controller."
-    }
+    },
+    "flow_title": "Protege WX ({host})"
   },
   "options": {
     "step": {

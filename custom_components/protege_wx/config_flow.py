@@ -21,9 +21,12 @@ except ImportError:  # pragma: no cover - older Home Assistant
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
+from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .const import (
     ALARMO_DIRECTIONS,
+    CONF_MAC,
     CONF_PROTOCOL,
     CONF_SERIAL,
     DEFAULT_ARM_WHEN_READY_MINUTES,
@@ -31,6 +34,7 @@ from .const import (
     DEFAULT_INPUT_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_VISITOR_MINUTES,
+    DEFAULT_WEB_PORT,
     DOMAIN,
     INPUT_TYPES,
     MAX_SCAN_INTERVAL,
@@ -207,10 +211,45 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for a Protege WX controller."""
 
     VERSION = 1
+    _mac: str | None = None
+
+    async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> ConfigFlowResult:
+        """An ICT device (MAC 00:1B:C2) joined the network, or a known one moved."""
+        mac = format_mac(discovery_info.macaddress)
+        ip = discovery_info.ip
+        for entry in self._async_current_entries(include_ignore=False):
+            host = entry.data.get(CONF_HOST, "")
+            name, _, port = host.partition(":")
+            if entry.data.get(CONF_MAC) == mac:
+                if name != ip:
+                    new_host = f"{ip}:{port}" if port else ip
+                    self.hass.config_entries.async_update_entry(
+                        entry, data={**entry.data, CONF_HOST: new_host}
+                    )
+                    if entry.state is ConfigEntryState.LOADED:
+                        self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                return self.async_abort(reason="already_configured")
+            if name == ip:
+                # Set up by hand before: remember its MAC so a move is followed.
+                self.hass.config_entries.async_update_entry(
+                    entry, data={**entry.data, CONF_MAC: mac}
+                )
+                return self.async_abort(reason="already_configured")
+        # Its serial number needs a login, so the MAC stands in until then.
+        await self.async_set_unique_id(mac)
+        self._abort_if_unique_id_configured()
+        self._mac = mac
+        self._discovered_host = f"{ip}:{DEFAULT_WEB_PORT}"
+        self.context["title_placeholders"] = {"host": ip}
+        return await self.async_step_user()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         placeholders: dict[str, str] = {}
+        if user_input is None and getattr(self, "_discovered_host", None):
+            user_input_defaults: dict[str, Any] | None = {CONF_HOST: self._discovered_host}
+        else:
+            user_input_defaults = user_input
         if user_input is not None:
             host = normalise_host(user_input[CONF_HOST])
             self._async_abort_entries_match({CONF_HOST: host})
@@ -224,7 +263,9 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors = _errors_for(err, placeholders, user_input[CONF_HOST])
             else:
                 if extra[CONF_SERIAL]:
-                    await self.async_set_unique_id(extra[CONF_SERIAL])
+                    await self.async_set_unique_id(
+                        extra[CONF_SERIAL], raise_on_progress=False
+                    )
                     self._abort_if_unique_id_configured(updates={CONF_HOST: host})
                 self._pending = {
                     CONF_HOST: host,
@@ -232,13 +273,15 @@ class ProtegeConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_PASSWORD: user_input[CONF_PASSWORD],
                     CONF_PROTOCOL: extra[CONF_PROTOCOL],
                 }
+                if self._mac:
+                    self._pending[CONF_MAC] = self._mac
                 self._missing = extra["missing"]
                 if self._missing:
                     return await self.async_step_permissions()
                 return self._create()
         return self.async_show_form(
             step_id="user",
-            data_schema=self.add_suggested_values_to_schema(USER_SCHEMA, user_input),
+            data_schema=self.add_suggested_values_to_schema(USER_SCHEMA, user_input_defaults),
             errors=errors,
             description_placeholders=placeholders,
         )

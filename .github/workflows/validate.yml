@@ -74,4 +74,6 @@ jobs:
       - name: Install Home Assistant
         run: |
           if [ "${{ matrix.ha }}" = beta ]; then pip install --pre homeassistant; else pip install homeassistant; fi
+      - name: Install the integration's requirements
+        run: pip install $(python -c "import json,glob;print(' '.join(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['requirements']))")
       - run: python tests/smoke.py

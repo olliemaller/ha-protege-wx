@@ -128,6 +128,7 @@ async def test_voice_register_falls_back(hass: HomeAssistant) -> None:
     manager.register_trigger.assert_called_once_with(details.return_value)
 
     # Nothing to register with at all.
+    hass.data.pop("conversation_default_entity", None)
     with patch(
         "builtins.__import__",
         _no(
@@ -237,12 +238,14 @@ async def test_permission_recheck_failure_shows_the_warning_again(
 async def test_reauth_and_reconfigure_errors(hass: HomeAssistant, controller) -> None:
     entry = _entry(controller)
     await _setup(hass, entry)
+    # Before the flow starts: older Home Assistant reloads on any entry change.
+    hass.config_entries.async_update_entry(entry, unique_id="SOMETHING-ELSE")
+    await hass.async_block_till_done()
     result = await entry.start_reauth_flow(hass)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "Home Assistant", CONF_PASSWORD: "nope"}
     )
     assert result["errors"] == {"base": "invalid_auth"}
-    hass.config_entries.async_update_entry(entry, unique_id="SOMETHING-ELSE")
     result = await hass.config_entries.flow.async_configure(result["flow_id"], LOGIN)
     assert result["reason"] == "wrong_controller"
 
@@ -271,7 +274,10 @@ async def test_dhcp_move_reloads_a_loaded_entry(hass: HomeAssistant, controller)
         )
     assert result["reason"] == "already_configured"
     assert entry.data[CONF_HOST] == f"192.0.2.30:{port}"
-    reload.assert_called_once_with(entry.entry_id)
+    from custom_components.protege_wx import _HAS_RELOADING_OPTIONS_FLOW
+
+    if _HAS_RELOADING_OPTIONS_FLOW:  # older versions reload from the update listener
+        reload.assert_called_once_with(entry.entry_id)
 
 
 async def test_options_need_a_loaded_entry(hass: HomeAssistant, controller) -> None:

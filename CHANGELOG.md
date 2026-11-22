@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2
+
+**Fixed**
+
+- On a controller set to month/day dates, event-log times from the 1st to the 12th of a month were read as day/month (4 March became 3 April). The weekday the controller prints now decides which it is (aioprotegewx 0.1.1). Controllers set to day/month, like the Australian default, were not affected.
+
 ## 0.8.1
 
 **Improved**

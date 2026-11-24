@@ -20,18 +20,21 @@
 - **Plain HTTP only.** Controllers whose web interface is HTTPS-only need [ICT Protege](https://github.com/caboose014/ICT-Protege-Home-Assistant) instead.
 - **Polled, not pushed.** Changes show up within about a second (doors, troubles and outputs within 5 s), not instantly as with the Automation and Control licence.
 - **PINs are Home Assistant's own.** Arming and disarming use the users you add in the integration's options, checked by Home Assistant. They're separate from the controller's keypad users.
-- **Tested on one controller** (web interface 2.3.x, WX firmware 4.00). Older web protocol versions are supported but less tested.
+- **Tested on one real controller** (web interface 2.3.x, WX firmware 4.00). Older web interfaces have only been tested against a simulated controller.
 
 ## Diagnostics and logs
 
 Download diagnostics from the integration's ⋮ menu. Passwords, PINs, serials and names in event lines are redacted. Attach it to a [bug report](https://github.com/olliemaller/ha-protege-wx/issues/new/choose).
 
-Debug logging:
+Debug logging: the quickest way is **Settings > Devices & services > ICT Protege WX**, then **Enable debug logging** in the ⋮ menu. Reproduce the problem, then select **Disable debug logging** and your browser downloads the log. That covers both the integration and the `aioprotegewx` library that talks to the controller.
+
+To keep it on across restarts, add both loggers to `configuration.yaml`:
 
 ```yaml
 logger:
   logs:
     custom_components.protege_wx: debug
+    aioprotegewx: debug
 ```
 
 Found a security problem? Please don't open an issue; see the [security policy](../SECURITY.md).

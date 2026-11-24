@@ -58,6 +58,10 @@ unlock_door:
       default: false
       selector:
         boolean:
+    code:
+      selector:
+        text:
+          type: password
 
 visitor_unlock:
   target:
@@ -71,6 +75,10 @@ visitor_unlock:
           min: 1
           max: 240
           unit_of_measurement: min
+    code:
+      selector:
+        text:
+          type: password
 
 bypass:
   target:

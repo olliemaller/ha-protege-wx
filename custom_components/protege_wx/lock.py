@@ -5,12 +5,11 @@ from typing import TYPE_CHECKING, Any
 
 from aioprotegewx import DoorStatus
 from homeassistant.components.lock import LockEntity
+from homeassistant.const import ATTR_CODE
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_platform
 
 from . import ProtegeConfigEntry
-from .compat import AddConfigEntryEntitiesCallback, vol
+from .compat import AddConfigEntryEntitiesCallback
 from .const import DEFAULT_VISITOR_MINUTES, OPT_VISITOR_MINUTES
 from .coordinator import DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
@@ -21,9 +20,6 @@ if TYPE_CHECKING:
 
 PARALLEL_UPDATES = 1
 
-SERVICE_UNLOCK_DOOR = "unlock_door"
-SERVICE_VISITOR_UNLOCK = "visitor_unlock"
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -33,17 +29,6 @@ async def async_setup_entry(
     data = entry.runtime_data
     async_add_entities(
         ProtegeDoorLock(entry, data.coordinator, door) for door in data.site.doors.values()
-    )
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        SERVICE_UNLOCK_DOOR,
-        {vol.Optional("hold_open", default=False): cv.boolean},
-        "async_service_unlock",
-    )
-    platform.async_register_entity_service(
-        SERVICE_VISITOR_UNLOCK,
-        {vol.Optional("minutes"): vol.All(vol.Coerce(int), vol.Range(min=1, max=240))},
-        "async_visitor_unlock",
     )
 
 
@@ -60,6 +45,9 @@ class ProtegeDoorLock(ProtegeEntity, LockEntity):
     def __init__(self, entry: ProtegeConfigEntry, coordinator: ProtegeCoordinator, door: DoorInfo) -> None:
         super().__init__(coordinator, "door", door.id, own_device=True)
         self._entry = entry
+        if coordinator.unlock_needs_code:
+            # Empty is allowed so locking still needs no PIN; unlocking checks it.
+            self._attr_code_format = r"^\d*$"
 
     @property
     def _visitors(self) -> VisitorUnlocks:
@@ -100,15 +88,18 @@ class ProtegeDoorLock(ProtegeEntity, LockEntity):
             self._visitors.cancel(self.rec_id)
 
     async def async_unlock(self, **kwargs: Any) -> None:
+        await self.coordinator.async_authorise_unlock(kwargs.get(ATTR_CODE))
         await self._command(self.coordinator.client.unlock_door(self.rec_id))
 
-    async def async_service_unlock(self, hold_open: bool = False) -> None:
+    async def async_service_unlock(self, hold_open: bool = False, code: str | None = None) -> None:
+        await self.coordinator.async_authorise_unlock(code)
         await self._command(self.coordinator.client.unlock_door(self.rec_id, latched=hold_open))
         if hold_open and self._visitors:
             self._visitors.cancel(self.rec_id)  # held open on purpose: no relock
 
-    async def async_visitor_unlock(self, minutes: int | None = None) -> None:
+    async def async_visitor_unlock(self, minutes: int | None = None, code: str | None = None) -> None:
         """Hold the door unlocked for a while, then lock it again."""
+        await self.coordinator.async_authorise_unlock(code)
         if minutes is None:
             minutes = int(self._entry.options.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES))
         await self._command(self._visitors.async_unlock(self.rec_id, minutes))

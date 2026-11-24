@@ -24,7 +24,7 @@ python tests/smoke.py
 Every push runs:
 
 - **hassfest** and the **HACS** action (which the Marketplace uses);
-- the tests on Home Assistant 2025.6 (Python 3.13, the oldest the test harness supports; the declared minimum is 2025.1) and the latest (Python 3.14);
+- the tests on Home Assistant 2025.6 (Python 3.13, the oldest the test harness supports and the declared minimum) and the latest (Python 3.14);
 - the smoke test on the latest stable and beta.
 
 ## Releasing

@@ -506,9 +506,30 @@ async def test_poll_failure_makes_entities_unavailable(hass: HomeAssistant, cont
     entry = _entry(controller)
     await _setup(hass, entry)
     controller.always_invalid = True
-    await _refresh(hass, entry)
+    for _ in range(3):  # the third failure in a row
+        await _refresh(hass, entry)
     assert _state(hass, ALARM) == "unavailable"
     assert _state(hass, "lock.front_door") == "unavailable"
+    assert entry.runtime_data.coordinator.last_exception.translation_key == "update_failed"
+
+
+async def test_two_failed_polls_keep_the_last_readings(hass: HomeAssistant, controller) -> None:
+    entry = _entry(controller)
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data.coordinator
+    before = _state(hass, ALARM)
+    controller.always_invalid = True
+    for failures in (1, 2):
+        await _refresh(hass, entry)
+        assert coordinator.poll_failures == failures
+        assert _state(hass, ALARM) == before
+        assert _state(hass, "lock.front_door") != "unavailable"
+        assert coordinator.connection_state != "connected"
+    controller.always_invalid = False
+    coordinator.client.guard.backoff_until = 0
+    await _refresh(hass, entry)
+    assert coordinator.poll_failures == 0
+    assert coordinator.connection_state == "connected"
 
 
 async def test_auth_failure_during_polling_stops_logins(hass: HomeAssistant, controller) -> None:
@@ -650,8 +671,10 @@ async def test_events_survive_a_failed_poll(hass: HomeAssistant, controller) -> 
         return original(plain, sessid)
 
     controller._command = fail_after_events
-    with pytest.raises(Exception):
-        await entry.runtime_data.coordinator._async_update_data()
+    coordinator = entry.runtime_data.coordinator
+    # A single failure keeps the last readings, without marking the events seen.
+    assert await coordinator._async_update_data() is coordinator.data
+    assert not failures
     controller._command = original
     await _refresh(hass, entry)
     assert failures and failures[-1].data["zones"] == ["Living"]
@@ -881,6 +904,10 @@ async def test_connection_sensor(hass: HomeAssistant, controller) -> None:
     controller.offline = True
     await _refresh(hass, entry)
     assert _state(hass, sensor) == "reconnecting"  # stays available while the link is down
+    assert _state(hass, ALARM) != "unavailable"  # one failure is tolerated
+    for _ in range(2):
+        await _refresh(hass, entry)
+    assert _state(hass, sensor) == "reconnecting"
     assert _state(hass, ALARM) == "unavailable"
     controller.offline = False
     await _refresh(hass, entry)
@@ -2268,6 +2295,7 @@ async def test_alarm_during_restart_is_announced_once(hass: HomeAssistant, contr
     assert texts == ["User Jane Citizen Duress Front Door", "Area Alarm Failure To ARM By User Jane Citizen"]
     assert all(e.data["replayed"] for e in logged)
     assert alerts and alerts[0].data["replayed"] is True
+    assert not entry.runtime_data.coordinator._replayed  # nothing kept once announced
     # Not announced again on the next poll.
     await _refresh(hass, entry)
     assert len(logged) == 2

@@ -14,14 +14,11 @@ from homeassistant.components.alarm_control_panel import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import ProtegeConfigEntry
-from .arm_when_ready import MODES as WAIT_MODES
 from .arm_when_ready import night_mode_for
-from .compat import AddConfigEntryEntitiesCallback, vol
+from .compat import AddConfigEntryEntitiesCallback
 from .const import (
     DEFAULT_ARM_WHEN_READY_MINUTES,
     DOMAIN,
@@ -35,9 +32,6 @@ from .users import UserCodes
 
 PARALLEL_UPDATES = 1
 
-SERVICE_ARM = "arm"
-SERVICE_ARM_WHEN_READY = "arm_when_ready"
-ARM_MODES = ("away", "stay", "instant")
 # A Home Assistant user is credited for controller events within this window.
 _ACTOR_WINDOW = 15.0
 
@@ -63,33 +57,6 @@ async def async_setup_entry(
     if sum(1 for area in data.site.areas.values() if area.has_inputs is not False) > 1:
         extra.append(ProtegeAllAreas(data.coordinator, codes))
     async_add_entities([*entities, *extra])
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        SERVICE_ARM,
-        {
-            vol.Required("mode"): vol.In(ARM_MODES),
-            vol.Optional("force", default=False): cv.boolean,
-            vol.Optional("code"): cv.string,
-        },
-        "async_service_arm",
-    )
-    platform.async_register_entity_service(
-        SERVICE_ARM_WHEN_READY,
-        {
-            vol.Optional("mode", default="away"): vol.In(WAIT_MODES),
-            vol.Optional("minutes"): vol.All(vol.Coerce(int), vol.Range(min=1, max=240)),
-            vol.Optional("code"): cv.string,
-        },
-        "async_service_arm_when_ready",
-    )
-    platform.async_register_entity_service(
-        SERVICE_SET_USER_ENABLED,
-        {vol.Required("user"): cv.string, vol.Required("enabled"): cv.boolean},
-        "async_service_set_user_enabled",
-    )
-
-
-SERVICE_SET_USER_ENABLED = "set_user_enabled"
 
 
 class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
@@ -289,19 +256,10 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
 
     async def _authorise(self, code: str | None, action: str) -> str | None:
         """Check the code; return the user's name (or None if codes are off)."""
-        self.coordinator.pin_guard.check_allowed()
-        result = await self.hass.async_add_executor_job(self._codes.check, code, action)
-        if result.reason == "invalid_code":
-            self.coordinator.pin_guard.record_failure()
-        if not result.allowed:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key=result.reason or "invalid_code",
-                translation_placeholders={"user": result.user or ""},
-            )
-        if result.user:
-            self.coordinator.ha_actor[self.rec_id] = (result.user, time.monotonic())
-        return result.user
+        user = await self.coordinator.async_authorise(code, action)
+        if user:
+            self.coordinator.ha_actor[self.rec_id] = (user, time.monotonic())
+        return user
 
     async def _arm_now(self, mode: str, force: bool) -> None:
         started = time.monotonic()
@@ -359,23 +317,44 @@ class ProtegeArea(ProtegeEntity, AlarmControlPanelEntity, RestoreEntity):
             self._requested = None
             raise
 
+    async def async_action(self, action: str, code: str | None, *, authorise: bool = True) -> None:
+        """Disarm or arm ("disarm", "arm_away", "arm_home", "arm_night" or
+        "arm_vacation"). ``authorise=False`` when the PIN was already checked."""
+        if action == "disarm":
+            if authorise:
+                await self._authorise(code, "disarm")
+            await self._command(self.coordinator.client.disarm_area(self.rec_id))
+        elif action == "arm_away":
+            await self._arm("away", False, code, authorise=authorise)
+        elif action == "arm_home":
+            await self._arm("stay", False, code, authorise=authorise)
+        elif action == "arm_night":
+            if self.night_mode == "off":
+                raise ServiceValidationError(translation_domain=DOMAIN, translation_key="night_off")
+            await self._arm(
+                self.night_mode, False, code,
+                as_state=AlarmControlPanelState.ARMED_NIGHT, authorise=authorise,
+            )
+        else:
+            await self._arm(
+                "away", False, code,
+                as_state=AlarmControlPanelState.ARMED_VACATION, authorise=authorise,
+            )
+
     async def async_alarm_disarm(self, code: str | None = None) -> None:
-        await self._authorise(code, "disarm")
-        await self._command(self.coordinator.client.disarm_area(self.rec_id))
+        await self.async_action("disarm", code)
 
     async def async_alarm_arm_away(self, code: str | None = None) -> None:
-        await self._arm("away", False, code)
+        await self.async_action("arm_away", code)
 
     async def async_alarm_arm_home(self, code: str | None = None) -> None:
-        await self._arm("stay", False, code)
+        await self.async_action("arm_home", code)
 
     async def async_alarm_arm_night(self, code: str | None = None) -> None:
-        if self.night_mode == "off":
-            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="night_off")
-        await self._arm(self.night_mode, False, code, as_state=AlarmControlPanelState.ARMED_NIGHT)
+        await self.async_action("arm_night", code)
 
     async def async_alarm_arm_vacation(self, code: str | None = None) -> None:
-        await self._arm("away", False, code, as_state=AlarmControlPanelState.ARMED_VACATION)
+        await self.async_action("arm_vacation", code)
 
     async def async_service_set_user_enabled(self, user: str, enabled: bool) -> None:
         """Turn a user's PIN on or off without opening the options."""
@@ -548,15 +527,22 @@ class ProtegeAllAreas(ProtegeEntity, AlarmControlPanelEntity):
         }
 
     async def _each(self, action: str, code: str | None) -> None:
-        """Run the action on every area; report the first failure after trying them all."""
+        """Check the PIN once, then run the action on every area; report the
+        first failure after trying them all."""
+        if action == "disarm":
+            areas = [a for a in self._areas() if a.alarm_state != AlarmControlPanelState.DISARMED]
+        else:  # leave areas already armed or arming alone
+            areas = [a for a in self._areas() if a.alarm_state in (AlarmControlPanelState.DISARMED, None)]
+        user = None
+        if areas:
+            # Once for the whole site, so a wrong PIN counts once, not once per area.
+            user = await self.coordinator.async_authorise(code, "disarm" if action == "disarm" else "arm")
         first_error: Exception | None = None
-        for area in self._areas():
-            if action != "disarm" and area.alarm_state not in (AlarmControlPanelState.DISARMED, None):
-                continue  # already armed or arming: leave it
-            if action == "disarm" and area.alarm_state == AlarmControlPanelState.DISARMED:
-                continue
+        for area in areas:
+            if user:
+                self.coordinator.ha_actor[area.rec_id] = (user, time.monotonic())
             try:
-                await getattr(area, f"async_alarm_{action}")(code)
+                await area.async_action(action, None, authorise=False)
             except HomeAssistantError as err:
                 first_error = first_error or err
         self.async_write_ha_state()

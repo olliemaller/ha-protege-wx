@@ -4,7 +4,9 @@
 # a self-assessment against every rule up to Platinum.
 rules:
   # Bronze
-  action-setup: done
+  action-setup:
+    status: done
+    comment: Every action is registered in async_setup and refuses with a translated error when no loaded entry has the target.
   appropriate-polling:
     status: done
     comment: 1 s by default for area and zone status and the newest event log page; doors, troubles and outputs on change and every 5 s; health every minute.
@@ -57,10 +59,16 @@ rules:
   docs-data-update: done
   docs-examples: done
   docs-known-limitations: done
-  docs-supported-devices: done
+  docs-supported-devices:
+    status: done
+    comment: docs/Installation.md lists the supported controller (Protege WX over plain HTTP) and what isn't. Only web interface 2.3.x is tested on real hardware; older ones only against a simulated controller, and the docs say so.
   docs-supported-functions: done
-  docs-troubleshooting: done
-  docs-use-cases: done
+  docs-troubleshooting:
+    status: done
+    comment: docs/Troubleshooting.md covers known limits, diagnostics, and debug logging for both loggers (the UI button or configuration.yaml).
+  docs-use-cases:
+    status: done
+    comment: docs/Automations.md (blueprints for notifications, auto arm and door schedules) and the examples in docs/Actions.md.
   dynamic-devices:
     status: done
     comment: The Rescan controller button adds areas, doors and inputs created since setup.
@@ -77,8 +85,8 @@ rules:
   # Platinum
   async-dependency: done
   inject-websession:
-    status: exempt
-    comment: The controller needs a session with its own cookie jar, so it can't share Home Assistant's.
+    status: done
+    comment: Uses async_create_clientsession with its own unsafe cookie jar (the controller sets its login cookie on a bare IP address), on Home Assistant's connection pool, and passes it to aioprotegewx.
   strict-typing:
     status: done
     comment: mypy --strict is clean and checked in CI; aioprotegewx ships py.typed.

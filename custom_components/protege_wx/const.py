@@ -24,6 +24,8 @@ OPT_OUTPUTS: Final = "outputs"
 OPT_INPUT_TYPES: Final = "input_types"
 OPT_USERS: Final = "users"
 OPT_CODE_ARM_REQUIRED: Final = "code_arm_required"
+# Off by default: unlocking a door needs a PIN only when this is turned on.
+OPT_CODE_UNLOCK_REQUIRED: Final = "code_unlock_required"
 OPT_NOTIFY_FAILED_ARM: Final = "notify_failed_arm"
 OPT_PANEL_CODE: Final = "panel_code"  # v0.1 single code, migrated to OPT_USERS
 # Per area (keyed by area id as a string)
@@ -43,6 +45,9 @@ OPT_ALARMO_DIRECTION: Final = "alarmo_direction"
 ALARMO_DIRECTIONS: Final = ("both", "to_alarmo")
 
 NIGHT_MODES: Final = ("instant", "stay", "off")
+# What the protege_wx.arm action accepts: the controller's own arm modes.
+ARM_MODES: Final = ("away", "stay", "instant")
+BYPASS_MODES: Final = ("none", "temporary", "permanent")
 DEFAULT_EXIT_DELAY: Final = 60
 DEFAULT_ENTRY_DELAY: Final = 30
 
@@ -86,6 +91,9 @@ ISSUE_LOW_VOLTAGE: Final = "low_supply_voltage"
 ISSUE_EVENT_LOG: Final = "event_log_unreadable"
 ISSUE_CLOCK: Final = "clock_drift"
 ISSUE_EMERGENCY: Final = "emergency"
+# One per door: raised after this many failed re-locks of a visitor unlock.
+ISSUE_VISITOR_RELOCK: Final = "visitor_relock_failed"
+VISITOR_RELOCK_ATTEMPTS: Final = 3
 CLOCK_DRIFT_SECONDS: Final = 120  # raise above this...
 CLOCK_DRIFT_CLEAR: Final = 60  # ...clear below this
 

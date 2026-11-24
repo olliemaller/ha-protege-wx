@@ -59,6 +59,7 @@ from .const import (
     OPT_ALARMO_ENTITY,
     OPT_ARM_WHEN_READY_MINUTES,
     OPT_CODE_ARM_REQUIRED,
+    OPT_CODE_UNLOCK_REQUIRED,
     OPT_DELAYS,
     OPT_IDLE_SCAN_INTERVAL,
     OPT_INPUT_TYPES,
@@ -121,8 +122,7 @@ async def validate_login(
             "missing": await check_permissions(client, health),
         }
     finally:
-        await client.close()
-        await session.close()
+        await client.close()  # logs out; Home Assistant cleans up the session
 
 
 # What each missing permission costs, for the setup warning.
@@ -475,6 +475,7 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                     OPT_SHOW_ARMING: bool(user_input.get(OPT_SHOW_ARMING, False)),
                     OPT_NOTIFY_FAILED_ARM: bool(user_input.get(OPT_NOTIFY_FAILED_ARM, True)),
                     OPT_CODE_ARM_REQUIRED: bool(user_input.get(OPT_CODE_ARM_REQUIRED, True)),
+                    OPT_CODE_UNLOCK_REQUIRED: bool(user_input.get(OPT_CODE_UNLOCK_REQUIRED, False)),
                     OPT_OUTPUTS: [str(rec_id) for rec_id in user_input.get(OPT_OUTPUTS, [])],
                     OPT_VISITOR_MINUTES: int(
                         user_input.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES)
@@ -518,6 +519,9 @@ class ProtegeOptionsFlow(_BaseOptionsFlow):
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     OPT_CODE_ARM_REQUIRED, default=options.get(OPT_CODE_ARM_REQUIRED, True)
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    OPT_CODE_UNLOCK_REQUIRED, default=options.get(OPT_CODE_UNLOCK_REQUIRED, False)
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     OPT_OUTPUTS, default=options.get(OPT_OUTPUTS, [])

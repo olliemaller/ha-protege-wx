@@ -17,10 +17,13 @@ In the Protege web interface, create an **operator** for Home Assistant, for exa
 
 [![Add the integration to your Home Assistant.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=protege_wx)
 
-If the controller gets its address by DHCP, it may already be waiting under **Settings > Devices & services > Discovered**, with its address filled in (port 7377 assumed; change it if yours differs). Otherwise go to **Settings > Devices & services > Add integration > ICT Protege WX** and enter:
+If the controller gets its address by DHCP, it may already be waiting under **Settings > Devices & services > Discovered**, with its address filled in (port 7377 assumed; change it if yours differs).
+
+> [!NOTE]
+> Discovery matches any device whose network address (MAC) starts with ICT's prefix, `00:1B:C2`. Other ICT products, such as a GX controller or a reader module, can show up too. Check the address before you add it, and ignore any that aren't a WX controller. Otherwise go to **Settings > Devices & services > Add integration > ICT Protege WX** and enter:
 
 - **Host:** the web interface address and port, for example `192.168.1.10:7377`. `http://` is optional. HTTPS isn't supported; see [Installation](Installation.md).
-- **Operator username and password.** The password is never sent to the controller; login is a challenge/response.
+- **Operator username and password.** The password itself is never sent to the controller: the controller sends a one-off random value, and Home Assistant answers with a value worked out from it and the password (a challenge and response), which is useless to anyone who sees it.
 
 Setup checks what the operator can see. If something's hidden (the event log, record details, doors), it tells you what that costs, so you can fix the role and re-check, or carry on.
 
@@ -36,12 +39,13 @@ Areas, doors, inputs, trouble inputs and outputs are discovered with their names
   - "Arming" display
   - notifications for failed arms (on by default)
   - whether a PIN is needed to arm (on by default; only applies once you add users)
+  - whether a PIN is needed to unlock doors (off by default; only applies once you add users). When on, the lock asks for the PIN of a user allowed to disarm, wrong PINs count towards the same lockout, and a door's Hold open switch and Visitor unlock button refuse: use `protege_wx.unlock_door` or `protege_wx.visitor_unlock` with a `code`
   - outputs to add as switches
   - visitor unlock time (1 to 240 minutes, default 15)
   - how long [Arm when ready](Arm-when-ready.md) waits (1 to 240 minutes, default 30)
 - **Alarm areas:** per area, what Night arms as (instant, stay or off), and the exit and entry delays (0 to 600 s). Only areas with inputs are listed, and only the Night modes the controller allows. Delays the controller reports are filled in for you; otherwise the defaults are 60 s exit and 30 s entry.
 - **Input types:** motion, door, window, smoke and so on, per input.
-- **Users and PINs:** add, edit or remove users and choose whether each can arm and disarm. PINs are at least 4 digits and must be different for each user. Only a salted hash of each PIN is stored. After 5 wrong PINs in 5 minutes, every PIN is blocked for 5 minutes. These users are separate from the controller's own keypad users.
+- **Users and PINs:** add, edit or remove users and choose whether each can arm and disarm. PINs are at least 4 digits and must be different for each user. Only a salted hash of each PIN is stored: a one-way scramble of the PIN mixed with random data, so the PIN can't be read back from it. After 5 wrong PINs in 5 minutes, every PIN is blocked for 5 minutes. These users are separate from the controller's own keypad users.
   Each PIN can also be limited: turned off without deleting it, only on certain days, only between two times (an overnight range like 22:00 to 06:00 works), or until a last day. A PIN used outside its limits is refused with the reason.
 - **Alarmo sync:** see [Apple Home and Alarmo](Apple-Home-and-Alarmo.md#alarmo).
 

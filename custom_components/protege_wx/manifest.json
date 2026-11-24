@@ -15,7 +15,6 @@
     "@olliemaller"
   ],
   "config_flow": true,
-  "dependencies": [],
   "dhcp": [
     {
       "macaddress": "001BC2*"
@@ -33,7 +32,7 @@
     "custom_components.protege_wx"
   ],
   "requirements": [
-    "aioprotegewx==0.1.1"
+    "aioprotegewx==0.1.2"
   ],
-  "version": "0.8.2"
+  "version": "0.8.3"
 }

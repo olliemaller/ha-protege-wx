@@ -62,6 +62,8 @@ async def run(config_dir: pathlib.Path, steps: list[str]) -> None:
     assert await bootstrap.async_load_base_functionality(hass) is not False
     try:
         assert await async_setup_component(hass, "homeassistant", {})
+        # A real start loads network first; Home Assistant's client sessions need it.
+        assert await async_setup_component(hass, "network", {})
         await hass.async_start()
 
         flow = await hass.config_entries.flow.async_init(

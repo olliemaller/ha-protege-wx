@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 
 from . import ProtegeConfigEntry
 from .compat import AddConfigEntryEntitiesCallback
@@ -108,6 +109,8 @@ class ProtegeVisitorButton(ProtegeEntity, ButtonEntity):
         super().__init__(coordinator, "door", door.id, key="visitor_unlock", own_device=True)
 
     async def async_press(self) -> None:
+        if self.coordinator.unlock_needs_code:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="unlock_needs_pin")
         entry = self.coordinator.config_entry
         minutes = int(entry.options.get(OPT_VISITOR_MINUTES, DEFAULT_VISITOR_MINUTES))
         await self._command(entry.runtime_data.visitors.async_unlock(self.rec_id, minutes))

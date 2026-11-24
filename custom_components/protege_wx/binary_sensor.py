@@ -12,21 +12,16 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from . import ProtegeConfigEntry
-from .compat import AddConfigEntryEntitiesCallback, vol
+from .compat import AddConfigEntryEntitiesCallback
 from .const import DEFAULT_INPUT_TYPE, DOMAIN, OPT_INPUT_TYPES
 from .coordinator import AreaInfo, DoorInfo, InputInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
 
 PARALLEL_UPDATES = 0
-
-SERVICE_BYPASS = "bypass"
-BYPASS_MODES = ("none", "temporary", "permanent")
 
 # Trouble inputs that report a one-off event rather than a fault to fix.
 _INFORMATIONAL_TROUBLES = ("system restarted", "installer logged in", "service test report")
@@ -59,13 +54,6 @@ async def async_setup_entry(
             entities.append(ProtegeReadySensor(coordinator, area, stay=True))
     entities.append(ProtegeFaultSensor(coordinator))
     async_add_entities(entities)
-
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        SERVICE_BYPASS,
-        {vol.Required("mode"): vol.In(BYPASS_MODES), vol.Optional("code"): cv.string},
-        "async_service_bypass",
-    )
 
 
 class _ProtegeBinarySensor(ProtegeEntity, BinarySensorEntity):

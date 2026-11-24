@@ -6,17 +6,15 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from aioprotegewx import DoorStatus, OutputStatus
-from aioprotegewx.client import MAX_TIMED_SECONDS
 from aioprotegewx.events import KIND_AREA, ParsedEvent
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import entity_platform
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import ProtegeConfigEntry
-from .compat import AddConfigEntryEntitiesCallback, vol
+from .compat import AddConfigEntryEntitiesCallback
 from .const import DOMAIN, OPT_OUTPUTS
 from .coordinator import AreaInfo, DoorInfo, ProtegeCoordinator
 from .entity import ProtegeEntity
@@ -28,7 +26,6 @@ if TYPE_CHECKING:
 
 PARALLEL_UPDATES = 1
 
-SERVICE_PULSE_OUTPUT = "pulse_output"
 ALLOW_MODES = ("away", "home", "night")
 
 
@@ -65,12 +62,6 @@ async def async_setup_entry(
         if rec_id in chosen
     ]
     async_add_entities(entities)
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        SERVICE_PULSE_OUTPUT,
-        {vol.Required("seconds"): vol.All(vol.Coerce(int), vol.Range(min=1, max=MAX_TIMED_SECONDS))},
-        "async_service_pulse",
-    )
 
 
 class ProtegeHoldOpenSwitch(ProtegeEntity, SwitchEntity):
@@ -106,6 +97,8 @@ class ProtegeHoldOpenSwitch(ProtegeEntity, SwitchEntity):
             visitors.cancel(self.rec_id)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        if self.coordinator.unlock_needs_code:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="unlock_needs_pin")
         await self._command(self.coordinator.client.unlock_door(self.rec_id, latched=True))
         self._cancel_visitor()  # held open on purpose: no visitor relock
 

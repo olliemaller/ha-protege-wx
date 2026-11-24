@@ -77,6 +77,7 @@
           "show_arming": "Show the exit delay as \"Arming\"",
           "notify_failed_arm": "Notify when the alarm fails to arm",
           "code_arm_required": "Require a PIN to arm",
+          "code_unlock_required": "Require a PIN to unlock doors",
           "outputs": "Outputs to add as switches",
           "visitor_minutes": "Visitor unlock time",
           "arm_when_ready_minutes": "Arm when ready time limit",
@@ -87,6 +88,7 @@
           "show_arming": "Leave off for Apple Home. While off, the alarm shows the mode being armed (Home, Away or Night) as soon as the exit delay starts. The HomeKit Bridge shows every \"Arming\" state as Away.",
           "notify_failed_arm": "Shows a notification naming the zones that stopped the alarm arming, from Home Assistant or a keypad.",
           "code_arm_required": "Only applies once you add users. Disarming always needs a PIN when users exist.",
+          "code_unlock_required": "Off by default. Only applies once you add users. When on, unlocking a door from Home Assistant needs the PIN of a user allowed to disarm, and wrong PINs count towards the same lockout as the alarm. A door's Hold open switch and Visitor unlock button then refuse: use the protege_wx.unlock_door or protege_wx.visitor_unlock action with a code.",
           "outputs": "Only outputs you pick are added. Leave out keypad LEDs, beepers, the bell and door locks.",
           "visitor_minutes": "How long a door's \"Visitor unlock\" button (and the protege_wx.visitor_unlock action, unless it says otherwise) holds the door unlocked before locking it again.",
           "arm_when_ready_minutes": "How long an area's \"Arm when ready\" switch (and the protege_wx.arm_when_ready action, unless it says otherwise) waits for the zones to close before giving up.",
@@ -569,6 +571,18 @@
     },
     "setup_auth_failed": {
       "message": "The controller rejected the login: {error}"
+    },
+    "unlock_needs_pin": {
+      "message": "Unlocking needs a PIN, and this control can't take one. Use the lock with a PIN, or the protege_wx.unlock_door or protege_wx.visitor_unlock action with a code."
+    },
+    "not_loaded": {
+      "message": "{action} found no Protege WX entity it can act on. Check the target, and that the controller's integration entry is loaded."
+    },
+    "update_failed": {
+      "message": "Error talking to the controller: {error}"
+    },
+    "poll_auth_failed": {
+      "message": "The controller rejected the login: {error}"
     }
   },
   "services": {
@@ -615,6 +629,10 @@
         "hold_open": {
           "name": "Hold open",
           "description": "Keep the door unlocked until it's locked again."
+        },
+        "code": {
+          "name": "PIN",
+          "description": "A user's PIN. Needed only when \"Require a PIN to unlock doors\" is on in the integration's options."
         }
       }
     },
@@ -649,6 +667,10 @@
         "minutes": {
           "name": "Minutes",
           "description": "How long to keep it unlocked. Leave out to use the time set in the integration's options (15 minutes unless changed)."
+        },
+        "code": {
+          "name": "PIN",
+          "description": "A user's PIN. Needed only when \"Require a PIN to unlock doors\" is on in the integration's options."
         }
       }
     },
@@ -694,6 +716,10 @@
           }
         }
       }
+    },
+    "visitor_relock_failed": {
+      "title": "{door} may still be unlocked",
+      "description": "Home Assistant tried {attempts} times to lock {door} at the end of a visitor unlock and couldn't. It keeps trying every 30 seconds, and this message goes away once the door locks. Until then, check the door, and lock it at the door or from the keypad if you can. If the controller is unreachable, see the controller unreachable advice in the integration's Troubleshooting guide."
     }
   },
   "triggers": {

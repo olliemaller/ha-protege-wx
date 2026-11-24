@@ -11,7 +11,7 @@ jobs:
   hassfest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: home-assistant/actions/hassfest@master
 
   # The Marketplace catalogue only accepts a clean run: no ignored checks.
@@ -39,7 +39,7 @@ jobs:
             harness: "pytest-homeassistant-custom-component"
             extra: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -75,7 +75,7 @@ jobs:
       matrix:
         ha: [stable, beta]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"

@@ -8,7 +8,7 @@ Some entities start disabled, so they don't clutter your dashboards: everything 
 
 - **Alarm control panel** with Away, Home (stay), Night, Holidays and Disarm.
   - **Night** arms instantly (no entry delay) by default. Per area you can make it a stay arm instead, or turn it off.
-  - **Holidays** arms away and shows as *Armed vacation*, for automations that treat a trip differently.
+  - **Holidays** arms away and shows as *Armed holidays* on the alarm card (Home Assistant's own state name is `armed_vacation`), for automations that treat a trip differently.
   - During the exit delay it shows the mode being armed, so Apple Home shows Home and Away correctly. An option switches this to "Arming".
   - *Pending* during the entry delay. *Triggered* only while an alarm or siren is actually active, not just held in alarm memory.
 - **`changed_by`**: the keypad user, card or Home Assistant user, read from the controller's event log.
@@ -62,7 +62,7 @@ Each zone sensor has a `trips_today` attribute: how many times it opened today, 
 
 ## Outputs
 
-Choose any outputs (PGMs) in the options. Each becomes its own device with a switch, and can be pulsed for a set time with [`protege_wx.pulse_output`](Actions.md).
+Choose any outputs (PGMs) in the options. A PGM, or programmable output, is a switched connection on the controller that ICT installers wire to things like a siren, a strobe, a garage door opener or a relay. Each becomes its own device with a switch, and can be pulsed for a set time with [`protege_wx.pulse_output`](Actions.md).
 
 ## Useful attributes
 

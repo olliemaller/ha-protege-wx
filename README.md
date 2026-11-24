@@ -6,7 +6,7 @@
   <a href="https://www.home-assistant.io/integrations/marketplace/"><img src="https://img.shields.io/badge/Marketplace-Custom-FFFFFF?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=000000" alt="Home Assistant Marketplace"></a>
   <a href="https://github.com/olliemaller/ha-protege-wx/releases"><img src="https://img.shields.io/github/v/release/olliemaller/ha-protege-wx?style=for-the-badge&color=FFFFFF&labelColor=000000" alt="Release"></a>
   <a href="https://github.com/olliemaller/ha-protege-wx/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/olliemaller/ha-protege-wx/validate.yml?branch=main&style=for-the-badge&label=checks&labelColor=000000" alt="Checks"></a>
-  <img src="https://img.shields.io/badge/Home%20Assistant-2025.1%2B-FFFFFF?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=000000" alt="Home Assistant 2025.1+">
+  <img src="https://img.shields.io/badge/Home%20Assistant-2025.6%2B-FFFFFF?style=for-the-badge&logo=homeassistant&logoColor=white&labelColor=000000" alt="Home Assistant 2025.6+">
   <a href="https://github.com/olliemaller/ha-protege-wx/blob/main/LICENSE"><img src="https://img.shields.io/github/license/olliemaller/ha-protege-wx?style=for-the-badge&color=FFFFFF&labelColor=000000" alt="Licence"></a>
 </p>
 
@@ -78,7 +78,10 @@ Both work without the licence. This one adds the [alarm card](https://github.com
 3. **Add the integration** with the web interface address (for example `192.168.1.10:7377`) and the operator's login.
 4. **Add the card**: search for **Protege WX alarm** in the dashboard editor.
 
-Needs a Protege WX with its web interface turned on over HTTP, and Home Assistant 2025.1 or newer. Tested on web interface 2.3.x; older versions are supported. Please [tell us how it went](https://github.com/olliemaller/ha-protege-wx/issues/new/choose) on yours.
+Needs a Protege WX with its web interface turned on over HTTP, and Home Assistant 2025.6 or newer. Tested on a real controller with web interface 2.3.x. Older web interfaces have only been tested against a simulated controller, not real hardware. Please [tell us how it went](https://github.com/olliemaller/ha-protege-wx/issues/new/choose) on yours.
+
+> [!WARNING]
+> **The controller's web interface is plain HTTP.** Anyone who can see traffic on your network can see the requests between Home Assistant and the controller and could tamper with them. The login itself is a challenge and response, so the password isn't sent, but status and commands are. Keep the controller and Home Assistant on a trusted network, ideally a separate VLAN for security devices, and never expose the web interface to the internet.
 
 ## Help and contributing
 

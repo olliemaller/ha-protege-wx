@@ -3,7 +3,7 @@
 ## Requirements
 
 - An ICT Protege WX with its **web interface** turned on over **plain HTTP**. Port 7377 is the usual default.
-- Home Assistant **2025.1** or newer. The integration's own icon shows from **2026.3**.
+- Home Assistant **2025.6** or newer. The integration's own icon shows from **2026.3**.
 - A controller **operator** for Home Assistant (see [Setup](Setup.md)).
 
 > [!NOTE]
@@ -13,10 +13,15 @@ Both web protocol versions are supported and **detected automatically**:
 
 | Web interface | Protocol | Status |
 |---|---|---|
-| **2.3.x** (e.g. 2.3.628, WX firmware 4.00) | HTTP POST, controller-issued session cookie | Tested |
-| Older | HTTP GET, client session, as in [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) | Supported |
+| **2.3.x** (e.g. 2.3.628, WX firmware 4.00) | Requests sent as HTTP POST; the controller hands out a login cookie | Tested on a real controller |
+| Older | Requests sent as HTTP GET; the browser side keeps the login, as in [protege-wx-cli](https://github.com/mitchell-johnson/protege-wx-cli) | Written for, but only tested against a simulated controller, not real hardware |
 
-Tested on one controller so far. Please [send a compatibility report](https://github.com/olliemaller/ha-protege-wx/issues/new/choose) with your web interface version and whether it worked.
+You don't need to pick one: the integration tries both. Tested on one real controller so far. Please [send a compatibility report](https://github.com/olliemaller/ha-protege-wx/issues/new/choose) with your web interface version and whether it worked.
+
+## Supported models
+
+- **ICT Protege WX** controllers (the all-in-one WX board) with the built-in web interface turned on over plain HTTP. Tested on web interface 2.3.628 with WX firmware 4.00.
+- Not supported: **Protege GX** (a different system with its own server software), and WX controllers whose web interface only answers over HTTPS (firmware 4.00.1676 or later can be set that way). For those, see the note above.
 
 ## Marketplace (Home Assistant 2026.11 and later)
 
@@ -28,7 +33,7 @@ Tested on one controller so far. Please [send a compatibility report](https://gi
 
 Updates appear under **Settings** > **Updates** with the release notes. After an update, the repair under **Settings** > **System** > **Repairs** restarts Home Assistant for you. To try pre-releases, turn on the repository's **Pre-release** switch on its Marketplace device page.
 
-## HACS (Home Assistant 2025.1 to 2026.10)
+## HACS (Home Assistant 2025.6 to 2026.10)
 
 1. Select the button above, or in **HACS** open the ⋮ menu > **Custom repositories**, add `https://github.com/olliemaller/ha-protege-wx` and choose type **Integration**.
 2. Download **ICT Protege WX**.

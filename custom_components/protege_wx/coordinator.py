@@ -72,6 +72,7 @@ from .const import (
     EVENT_LOGBOOK,
     FULL_REFRESH_SECONDS,
     HEALTH_REFRESH_SECONDS,
+    OPT_CODE_UNLOCK_REQUIRED,
     OPT_DELAYS,
     OPT_IDLE_SCAN_INTERVAL,
     OPT_NOTIFY_FAILED_ARM,
@@ -99,6 +100,10 @@ _REPLAY_AREA_TYPES = ("alarm", "failed_to_arm")
 # After an outage the newest page may all be new; read back this many pages to
 # find where we left off.
 _MAX_PAGES_BACK = 3
+
+# Polls that may fail in a row, keeping the last readings, before entities
+# go unavailable: one dropped request shouldn't blank the whole controller.
+TOLERATED_POLL_FAILURES = 2
 
 ARM_OK = "ok"
 ARM_FAILED = "failed"
@@ -135,6 +140,14 @@ class PinGuard:
         if len(self._failures) >= self.MAX_FAILURES:
             self._locked_until = now + self.LOCKOUT
             self._failures.clear()
+
+
+def entry_pin_guard(hass: HomeAssistant, entry_id: str) -> PinGuard:
+    """The PIN guard for an entry, kept across reloads so reloading can't
+    reset a lockout. Removed with the entry."""
+    store: dict[Any, Any] = hass.data.setdefault(DOMAIN, {})
+    guard: PinGuard = store.setdefault(("pin_guard", entry_id), PinGuard())
+    return guard
 
 
 @dataclass
@@ -405,7 +418,9 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self._seen: set[tuple[Any, ...]] = set()
         self._seen_order: deque[tuple[Any, ...]] = deque()
         self._events_primed = False
-        self._replayed: set[int] = set()  # id() of events announced late on the first read
+        # id() of events announced late on the first read; each is removed
+        # once dispatched, so ids can't be reused by later events.
+        self._replayed: set[int] = set()
         self._event_seq = 0
         self.history: deque[ParsedEvent] = deque(maxlen=EVENT_HISTORY)
         self._event_listeners: list[Callable[[ParsedEvent], None]] = []
@@ -417,7 +432,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         # Home Assistant arm modes turned off per area ("away", "home", "night"),
         # set by the area's "Allow arm ..." switches.
         self.blocked_modes: dict[int, set[str]] = {}
-        self.pin_guard = PinGuard()
+        self.pin_guard = entry_pin_guard(hass, entry.entry_id)
         self.codes = UserCodes(dict(entry.options))
         # (monotonic time received, area name, zones) for recent arm failures.
         self.recent_failures: deque[tuple[float, str, list[str]]] = deque(maxlen=10)
@@ -436,6 +451,8 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         self.last_triggered: dict[int, datetime] = {}
         # Controller clock minus Home Assistant's, from fresh event lines (s).
         self.clock_drift: deque[float] = deque(maxlen=7)
+        # Polls failed in a row (see TOLERATED_POLL_FAILURES).
+        self.poll_failures = 0
         # Told after every poll, failed or not (the coordinator itself only
         # tells entities about the first of a run of failures).
         self._status_listeners: list[Callable[[], None]] = []
@@ -464,6 +481,35 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 return True
         return False
 
+    async def async_authorise(self, code: str | None, action: str) -> str | None:
+        """Check a PIN for ``action`` ("arm" or "disarm") through the PIN guard.
+        Returns the user's name (None when PINs are off); raises when refused."""
+        from homeassistant.exceptions import ServiceValidationError
+
+        self.pin_guard.check_allowed()
+        result = await self.hass.async_add_executor_job(self.codes.check, code, action)
+        if result.reason == "invalid_code":
+            self.pin_guard.record_failure()
+        if not result.allowed:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key=result.reason or "invalid_code",
+                translation_placeholders={"user": result.user or ""},
+            )
+        return result.user
+
+    @property
+    def unlock_needs_code(self) -> bool:
+        """Unlocking a door needs a PIN: turned on in the options, and users exist."""
+        return self.codes.enabled and bool(
+            self.config_entry.options.get(OPT_CODE_UNLOCK_REQUIRED, False)
+        )
+
+    async def async_authorise_unlock(self, code: str | None) -> None:
+        """When unlocking needs a PIN, check it like a disarm PIN."""
+        if self.unlock_needs_code:
+            await self.async_authorise(code, "disarm")
+
     async def async_authorise_bypass(self, input_id: int, code: str | None) -> None:
         """Bypassing weakens the alarm. When PINs are set up, it needs a PIN
         allowed to disarm; without a PIN it's only allowed while disarmed."""
@@ -472,16 +518,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         if not self.codes.enabled:
             return
         if code:
-            self.pin_guard.check_allowed()
-            result = await self.hass.async_add_executor_job(self.codes.check, code, "disarm")
-            if result.reason == "invalid_code":
-                self.pin_guard.record_failure()
-            if not result.allowed:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key=result.reason or "invalid_code",
-                    translation_placeholders={"user": result.user or ""},
-                )
+            await self.async_authorise(code, "disarm")
             return
         if self.input_area_armed(input_id):
             raise ServiceValidationError(
@@ -647,12 +684,18 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         started = time.monotonic()
         try:
             state = await self._async_poll()
-        except UpdateFailed:
+        except UpdateFailed as err:
+            self.poll_failures += 1
             self._record_failure()
+            if self.data is not None and self.poll_failures <= TOLERATED_POLL_FAILURES:
+                _LOGGER.debug("Poll failed (%d in a row), keeping the last readings: %s",
+                              self.poll_failures, err)
+                return self.data
             raise
         except ConfigEntryAuthFailed:
             self._notify_status()
             raise
+        self.poll_failures = 0
         if state.event_seq != (self.data.event_seq if self.data else 0) or self._activity(self.data, state):
             self.mark_busy()
         elif time.monotonic() >= self._busy_until:
@@ -703,9 +746,17 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                     _LOGGER.debug("Health not readable: %s", err)
                 self._last_health = now
         except ProtegeAuthError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="poll_auth_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         except (TimeoutError, ProtegeError) as err:
-            raise UpdateFailed(f"Error talking to the controller: {err}") from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
         meaningful = self._commit_events(fresh)
         if meaningful:
@@ -718,6 +769,9 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
     def _dispatch(self, events: list[ParsedEvent], state: ProtegeState) -> None:
         for parsed in events:
             self.history.append(parsed)
+            # True for an alarm that happened while Home Assistant was restarting.
+            replayed = id(parsed) in self._replayed
+            self._replayed.discard(id(parsed))
             zones = (
                 self.zones_behind_failure(parsed, events, state)
                 if parsed.kind == KIND_AREA and parsed.event_type == "failed_to_arm"
@@ -736,14 +790,13 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                     "method": parsed.method,
                     "text": parsed.event.text,
                     "time": parsed.event.time.isoformat() if parsed.event.time else None,
-                    # True for an alarm that happened while Home Assistant was restarting.
-                    "replayed": id(parsed) in self._replayed,
+                    "replayed": replayed,
                 },
             )
             if zones is not None:
                 self._failed_to_arm(parsed, zones)
             if parsed.kind == KIND_EMERGENCY:
-                self._emergency(parsed)
+                self._emergency(parsed, replayed)
             for listener in list(self._event_listeners):
                 try:
                     listener(parsed)
@@ -823,7 +876,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
         open_now = self.open_zones(area_id, state)
         return open_now[0] if open_now else None
 
-    def _emergency(self, parsed: ParsedEvent) -> None:
+    def _emergency(self, parsed: ParsedEvent, replayed: bool = False) -> None:
         who = self.actor_name(parsed)
         area = parsed.subject
         self.hass.bus.async_fire(
@@ -835,7 +888,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 "by": who,
                 "text": parsed.event.text,
                 "time": parsed.event.time.isoformat() if parsed.event.time else None,
-                "replayed": id(parsed) in self._replayed,
+                "replayed": replayed,
             },
         )
         self.health.raise_emergency(parsed.event_type, area or "", who or "", parsed.event.text)
@@ -900,7 +953,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
             return "login_failed"
         if time.monotonic() < self.client.guard.backoff_until:
             return "backing_off"
-        return "connected" if self.last_update_success else "reconnecting"
+        return "connected" if self.last_update_success and not self.poll_failures else "reconnecting"
 
     def logins_last_window(self) -> int:
         from aioprotegewx.client import LOGIN_WINDOW
@@ -1029,7 +1082,7 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
                 f"{failure.subject} didn't arm because {zone_text} "
                 f"{'was' if len(zones) <= 1 else 'were'} open. Close it or use force arm.",
                 title="Alarm didn't arm",
-                notification_id=f"{DOMAIN}_failed_to_arm_{failure.subject}",
+                notification_id=f"{DOMAIN}_failed_to_arm_{self.config_entry.entry_id}_{failure.subject}",
             )
 
     async def async_check_arm_result(
@@ -1054,11 +1107,11 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
             for received, area_name, zones in reversed(self.recent_failures):
                 if received >= since and area_name == name:
                     return ARM_FAILED, zones
-            if not self.last_update_success:
+            if not self.last_update_success or self.poll_failures:
                 continue
             status = self.data.areas.get(area_id) if self.data else None
             if status is not None and status.is_armed_or_arming:
                 return ARM_OK, []
-        if not self.last_update_success:
+        if not self.last_update_success or self.poll_failures:
             return ARM_UNCONFIRMED, []
         return ARM_FAILED, self.open_zones(area_id, stay=stay)

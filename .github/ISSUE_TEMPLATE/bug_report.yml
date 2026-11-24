@@ -4,18 +4,18 @@ labels: [bug]
 body:
   - type: input
     id: ha
-    attributes: {label: Home Assistant version, placeholder: "2026.10.4"}
+    attributes: {label: Home Assistant version, placeholder: "From Settings > About, for example YYYY.M.x"}
     validations: {required: true}
   - type: input
     id: version
-    attributes: {label: Integration version, placeholder: "0.4.2"}
+    attributes: {label: Integration version, placeholder: "From the integration page, for example x.y.z"}
     validations: {required: true}
   - type: input
     id: web
     attributes: {label: Protege WX web interface and firmware version, placeholder: "Web 2.3.628.P028, WX 4.00"}
   - type: textarea
     id: what
-    attributes: {label: What happened, and what did you expect?}
+    attributes: {label: "What happened, and what did you expect?"}
     validations: {required: true}
   - type: textarea
     id: diag

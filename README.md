@@ -51,7 +51,7 @@
 | **[Alarm card](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Alarm-card.md)** | Countdown, open zones, what set it off, a PIN keypad and recent activity. Follows your theme, light or dark. Ships with the integration. |
 | **[Arm when ready](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Arm-when-ready.md)** | Arms the moment the last window shuts, or gives up after 30 minutes. |
 | **[Automations](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Automations.md)** | "Access granted", "Door forced or left open", "Area failed to arm" and emergency triggers, plus an "Area is ready to arm" condition. |
-| **Doors** | Timed unlock, hold open, visitor unlock, forced and left-open sensors, and who came in last. |
+| **Doors** | Timed unlock, hold open, visitor unlock, lock every door at once, forced and left-open sensors, and who came in last. |
 | **Who did it** | The keypad user, card, PIN or Home Assistant user behind every arm, disarm and door. |
 | **[Voice](https://github.com/olliemaller/ha-protege-wx/blob/main/docs/Voice.md)** | "Is the house armed?", "Can I arm?", "Who came in last?" |
 | **Health** | Trouble inputs, an "Alarm fault" sensor, supply voltage and Repairs alerts. |

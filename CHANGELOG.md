@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0
+
+Released 2026-11-24.
+
+**Before you update**
+
+- Every output (PGM) on the controller now gets a switch. Outputs you didn't choose in the options are added to the controller device, turned off. Nothing changes until you turn one on.
+
+**New**
+
+- **`protege_wx.lockdown`** locks every door on every controller, with each door's own lock command. Admins only, no PIN needed (locking only makes the site more secure). It also locks held-open doors and cancels visitor unlocks, carries on past a door that won't lock, and records who ran it in the logbook and the log. It isn't the controller's own lockdown mode, which the web interface has no command for. See [Actions](docs/Actions.md#lockdown).
+- **Outputs are found automatically.** Turn on the ones you want under Entities. Outputs chosen in the options still get their own device, as before.
+
+**Not added, and why**
+
+- Setting the controller's clock: the web interface command that sets the time hasn't been captured, so the clock drift check still only warns.
+- Reading the controller's users and cards: the web interface's user records haven't been captured. (The integration's own PIN users are unchanged.)
+
 ## 0.8.3
 
 Released 2026-11-24.

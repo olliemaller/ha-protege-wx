@@ -11,3 +11,4 @@ ignore = ["E501", "B904", "B017"]
 # Fixtures imported from test_integration are redefined as test arguments.
 "tests/test_coverage.py" = ["F811"]
 "tests/test_review_fixes.py" = ["F811"]
+"tests/test_lockdown_outputs.py" = ["F811"]

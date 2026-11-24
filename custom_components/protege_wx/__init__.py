@@ -6,6 +6,7 @@ interface over plain HTTP, so no Automation and Control licence is needed.
 from __future__ import annotations
 
 import inspect
+import logging
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -32,6 +33,7 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
+    HomeAssistantError,
     ServiceValidationError,
 )
 from homeassistant.helpers import config_validation as cv
@@ -39,7 +41,10 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import async_get_platforms
-from homeassistant.helpers.service import entity_service_call
+from homeassistant.helpers.service import (
+    async_register_admin_service,
+    entity_service_call,
+)
 from homeassistant.helpers.typing import ConfigType
 
 from .alarmo import AlarmoSync
@@ -52,6 +57,7 @@ from .const import (
     BYPASS_MODES,
     CONF_PROTOCOL,
     DOMAIN,
+    EVENT_LOGBOOK,
     MANUFACTURER,
     OPT_ALARMO_AREA,
     OPT_ALARMO_ENTITY,
@@ -65,6 +71,8 @@ from .voice import async_setup_voice
 
 if TYPE_CHECKING:
     from .alarm_control_panel import ProtegeArea
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.ALARM_CONTROL_PANEL,
@@ -155,7 +163,57 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             partial(_async_handle_action, hass, entity_domain, method),
             schema=cv.make_entity_service_schema(fields),
         )
+    # Admins only (automations and scripts run without a user, so they can).
+    async_register_admin_service(hass, DOMAIN, "lockdown", partial(_async_lockdown, hass))
     return True
+
+
+async def _async_lockdown(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Lock every door on every loaded controller with each door's own lock
+    command (the web interface has no lockdown command), then log who did it.
+
+    Locking only makes a site more secure, so no PIN is asked for, as with
+    locking one door. Doors that fail don't stop the rest.
+    """
+    entries: list[ProtegeConfigEntry] = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.state is ConfigEntryState.LOADED
+    ]
+    if not entries:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="not_loaded",
+            translation_placeholders={"action": f"{DOMAIN}.lockdown"},
+        )
+    user = await hass.auth.async_get_user(call.context.user_id) if call.context.user_id else None
+    who = user.name if user else "an automation"
+    locked: list[str] = []
+    failed: list[str] = []
+    for entry in entries:
+        data = entry.runtime_data
+        for door in data.site.doors.values():
+            try:
+                await data.client.lock_door(door.id)
+            except ProtegeError as err:
+                _LOGGER.warning("Lockdown: %s didn't lock: %s", door.name, err)
+                failed.append(door.name)
+                continue
+            locked.append(door.name)
+            if data.visitors:
+                data.visitors.cancel(door.id)  # no visitor relock timer left behind
+        await data.coordinator.async_refresh_all()
+    message = f"lockdown by {who}: locked {len(locked)} door(s)"
+    if failed:
+        message += f"; didn't lock {', '.join(failed)}"
+    _LOGGER.warning("Protege WX %s", message)
+    hass.bus.async_fire(EVENT_LOGBOOK, {"name": "Protege WX", "message": message})
+    if failed:
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="lockdown_failed",
+            translation_placeholders={"doors": ", ".join(failed)},
+        )
 
 
 async def _async_handle_action(

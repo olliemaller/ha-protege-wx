@@ -89,7 +89,7 @@
           "notify_failed_arm": "Shows a notification naming the zones that stopped the alarm arming, from Home Assistant or a keypad.",
           "code_arm_required": "Only applies once you add users. Disarming always needs a PIN when users exist.",
           "code_unlock_required": "Off by default. Only applies once you add users. When on, unlocking a door from Home Assistant needs the PIN of a user allowed to disarm, and wrong PINs count towards the same lockout as the alarm. A door's Hold open switch and Visitor unlock button then refuse: use the protege_wx.unlock_door or protege_wx.visitor_unlock action with a code.",
-          "outputs": "Only outputs you pick are added. Leave out keypad LEDs, beepers, the bell and door locks.",
+          "outputs": "Outputs you pick get their own device and are turned on. Every other output is added too, turned off: turn on only the ones you want. Leave out keypad LEDs, beepers, the bell and door locks.",
           "visitor_minutes": "How long a door's \"Visitor unlock\" button (and the protege_wx.visitor_unlock action, unless it says otherwise) holds the door unlocked before locking it again.",
           "arm_when_ready_minutes": "How long an area's \"Arm when ready\" switch (and the protege_wx.arm_when_ready action, unless it says otherwise) waits for the zones to close before giving up.",
           "idle_scan_interval": "How often to check the controller when nothing has happened for a minute. It switches to the normal interval as soon as a zone, door, delay or event changes. Set it the same as the update interval to always poll fast."
@@ -583,6 +583,9 @@
     },
     "poll_auth_failed": {
       "message": "The controller rejected the login: {error}"
+    },
+    "lockdown_failed": {
+      "message": "Lockdown didn't lock {doors}. The other doors are locked."
     }
   },
   "services": {
@@ -687,6 +690,10 @@
           "description": "On to allow the PIN, off to stop it."
         }
       }
+    },
+    "lockdown": {
+      "name": "Lockdown",
+      "description": "Lock every door on every Protege WX controller, with each door's own lock command. Admins only."
     }
   },
   "issues": {

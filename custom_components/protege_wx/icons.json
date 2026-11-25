@@ -141,6 +141,9 @@
     },
     "set_user_enabled": {
       "service": "mdi:account-key"
+    },
+    "lockdown": {
+      "service": "mdi:lock-alert"
     }
   },
   "triggers": {

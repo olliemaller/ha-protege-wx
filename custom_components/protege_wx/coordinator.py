@@ -542,6 +542,13 @@ class ProtegeCoordinator(DataUpdateCoordinator[ProtegeState]):
 
     # ── polling ────────────────────────────────────────────────────────────
 
+    @callback
+    def async_poll_outputs(self) -> None:
+        """An output switch is enabled: read outputs too, from the next poll."""
+        if not self._poll_outputs:
+            self._poll_outputs = True
+            self._last_full = None
+
     async def async_refresh_all(self) -> None:
         """Re-read everything now (after a command), not just areas and inputs."""
         self._last_full = None

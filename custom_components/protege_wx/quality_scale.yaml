@@ -6,7 +6,7 @@ rules:
   # Bronze
   action-setup:
     status: done
-    comment: Every action is registered in async_setup and refuses with a translated error when no loaded entry has the target.
+    comment: Every action is registered in async_setup and refuses with a translated error when no loaded entry has the target. protege_wx.lockdown is registered as an admin-only action.
   appropriate-polling:
     status: done
     comment: 1 s by default for area and zone status and the newest event log page; doors, troubles and outputs on change and every 5 s; health every minute.
@@ -71,7 +71,7 @@ rules:
     comment: docs/Automations.md (blueprints for notifications, auto arm and door schedules) and the examples in docs/Actions.md.
   dynamic-devices:
     status: done
-    comment: The Rescan controller button adds areas, doors and inputs created since setup.
+    comment: The Rescan controller button adds areas, doors, inputs and outputs created since setup. Outputs not chosen in the options are added disabled.
   entity-category: done
   entity-device-class: done
   entity-disabled-by-default: done

@@ -208,7 +208,10 @@ async def test_setup_creates_expected_entities(hass: HomeAssistant, controller) 
     assert "button.alarm_force_arm_night" in entities
     assert "button.alarm_silence_siren" in entities
     assert "event.alarm_events" in entities and "event.front_door_events" in entities
-    assert not [e for e in entities if e.startswith("switch.protege_wx_controller")]
+    # Outputs not chosen in the options are found anyway, but start disabled.
+    outputs = [e for e in entities if e.startswith("switch.protege_wx_controller")]
+    assert len(outputs) == 2
+    assert all(entities[e].disabled_by is er.RegistryEntryDisabler.INTEGRATION for e in outputs)
 
 
 def _device(hass: HomeAssistant, identifier: str) -> dr.DeviceEntry | None:

@@ -1,8 +1,8 @@
 # Features
 
-Each area, door, input and chosen output is its own device under the controller. Trouble inputs and the *Last seen* sensors belong to the controller itself.
+Each area, door, input and output chosen in the options is its own device under the controller. Trouble inputs and the *Last seen* sensors belong to the controller itself.
 
-Some entities start disabled, so they don't clutter your dashboards: everything for an area with no inputs (such as a "System" area), inputs that belong to no area, *Forced open* and *Left open* on doors without a door-position input, and *Memory used*. Turn them on under **Settings > Devices & services > Entities** if you want them.
+Some entities start disabled, so they don't clutter your dashboards: everything for an area with no inputs (such as a "System" area), inputs that belong to no area, outputs you didn't choose in the options, *Forced open* and *Left open* on doors without a door-position input, and *Memory used*. Turn them on under **Settings > Devices & services > Entities** if you want them.
 
 ## Areas
 
@@ -62,7 +62,11 @@ Each zone sensor has a `trips_today` attribute: how many times it opened today, 
 
 ## Outputs
 
-Choose any outputs (PGMs) in the options. A PGM, or programmable output, is a switched connection on the controller that ICT installers wire to things like a siren, a strobe, a garage door opener or a relay. Each becomes its own device with a switch, and can be pulsed for a set time with [`protege_wx.pulse_output`](Actions.md).
+A PGM, or programmable output, is a switched connection on the controller that ICT installers wire to things like a siren, a strobe, a garage door opener or a relay. Every output the controller lists gets a switch, and can be pulsed for a set time with [`protege_wx.pulse_output`](Actions.md).
+
+- **Outputs you choose in the options** are turned on, each as its own device.
+- **Every other output** is added to the controller device, turned off. Turn on the ones you want under **Settings > Devices & services > Entities**. They stay off by default because outputs also include keypad LEDs, beepers, the bell and door strikes: switching a door strike unlocks the door without the PIN check that "Require a PIN to unlock doors" adds to the lock.
+- Outputs are only read from the controller while at least one output switch is enabled.
 
 ## Useful attributes
 

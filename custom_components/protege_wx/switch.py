@@ -1,5 +1,5 @@
-"""Switches: "Hold open" per door, walk test per area, and outputs (PGMs)
-chosen in the options."""
+"""Switches: "Hold open" per door, walk test per area, and outputs (PGMs):
+those chosen in the options, and the rest disabled until turned on."""
 from __future__ import annotations
 
 import re
@@ -57,9 +57,8 @@ async def async_setup_entry(
         if mode != "home" or area.stay_enabled
     ]
     entities += [
-        ProtegeOutputSwitch(data.coordinator, rec_id, name)
+        ProtegeOutputSwitch(data.coordinator, rec_id, name, chosen=rec_id in chosen)
         for rec_id, name in data.site.outputs.items()
-        if rec_id in chosen
     ]
     async_add_entities(entities)
 
@@ -117,13 +116,25 @@ class ProtegeHoldOpenSwitch(ProtegeEntity, SwitchEntity):
 
 
 class ProtegeOutputSwitch(ProtegeEntity, SwitchEntity):
-    """A Protege output, as the main entity of its own device (a child of the
-    controller), so it takes the output's name and can be given its own area."""
+    """A Protege output.
 
-    _attr_name = None
+    One chosen in the options is the main entity of its own device (a child of
+    the controller), so it takes the output's name and can be given its own
+    area. Every other output found on the controller sits on the controller,
+    disabled until someone turns it on: outputs include keypad beepers, the
+    bell and door strikes, which shouldn't be switchable by accident.
+    """
 
-    def __init__(self, coordinator: ProtegeCoordinator, rec_id: int, name: str) -> None:
-        super().__init__(coordinator, "output", rec_id, own_device=True)
+    def __init__(
+        self, coordinator: ProtegeCoordinator, rec_id: int, name: str, *, chosen: bool = True
+    ) -> None:
+        super().__init__(coordinator, "output", rec_id, own_device=chosen)
+        self._attr_name = None if chosen else name
+        self._attr_entity_registry_enabled_default = chosen
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.coordinator.async_poll_outputs()  # only enabled entities get here
 
     @property
     def _status(self) -> OutputStatus | None:

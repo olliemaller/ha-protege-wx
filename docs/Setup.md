@@ -40,7 +40,7 @@ Areas, doors, inputs, trouble inputs and outputs are discovered with their names
   - notifications for failed arms (on by default)
   - whether a PIN is needed to arm (on by default; only applies once you add users)
   - whether a PIN is needed to unlock doors (off by default; only applies once you add users). When on, the lock asks for the PIN of a user allowed to disarm, wrong PINs count towards the same lockout, and a door's Hold open switch and Visitor unlock button refuse: use `protege_wx.unlock_door` or `protege_wx.visitor_unlock` with a `code`
-  - outputs to add as switches
+  - outputs to add as their own devices (every other output is added turned off)
   - visitor unlock time (1 to 240 minutes, default 15)
   - how long [Arm when ready](Arm-when-ready.md) waits (1 to 240 minutes, default 30)
 - **Alarm areas:** per area, what Night arms as (instant, stay or off), and the exit and entry delays (0 to 600 s). Only areas with inputs are listed, and only the Night modes the controller allows. Delays the controller reports are filled in for you; otherwise the defaults are 60 s exit and 30 s entry.
